@@ -1,0 +1,10 @@
+{
+  "status": "ready",
+  "clarification_question": "",
+  "metric_id": "sales_amount",
+  "date_start": "2021-01-01",
+  "date_end_exclusive": "2026-01-01",
+  "group_by": "year",
+  "chart": "line",
+  "language": "en"
+}

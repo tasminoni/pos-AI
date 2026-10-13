@@ -1,0 +1,3 @@
+<FilesMatch "^(\.env|ai_schema_cache\.json|sql_schema\.json|schema_catalog\.json|business_rules\.json|Pos_Local_Database\.txt|IMPLEMENTATION_PLAN\.md|PHASE1_README\.md|PHASE2_README\.md)$">
+    Require all denied
+</FilesMatch>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#101b2e">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Business Intelligence | AI Reports</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/vendor/chart.umd.min.js" defer></script>
+  <script type="module" src="assets/app.mjs?v=20261013-6"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Reporting navigation">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><span><strong>Business Lens</strong><small>AI reporting workspace</small></span></div>
+      <button class="new-chat" id="new-chat" type="button"><span aria-hidden="true">＋</span> New conversation</button>
+      <div class="sidebar-section"><div class="eyebrow">RECENT REPORTS</div><nav id="history-list" aria-label="Recent report conversations"><p class="sidebar-muted">Your report history will appear here.</p></nav></div>
+      <div class="sidebar-bottom"><div class="security-note"><span class="security-dot" aria-hidden="true"></span><span>Scoped to your authorized business data</span></div><div class="sidebar-foot">Verified data · Read-only queries</div></div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <header class="topbar">
+        <div class="topbar-start"><button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false">☰</button><div><div class="breadcrumb">WORKSPACE <span aria-hidden="true">/</span> REPORTING</div><h1>Ask your business data</h1></div></div>
+        <div class="topbar-actions"><span class="status-pill"><span aria-hidden="true"></span> Secure report mode</span><button class="icon-button filter-toggle" id="filter-toggle" type="button" aria-label="Show report filters" aria-expanded="false">⚙</button></div>
+      </header>
+
+      <section class="conversation" id="conversation" aria-label="Reporting conversation">
+        <div class="welcome" id="welcome">
+          <div class="welcome-symbol" aria-hidden="true">✦</div>
+          <p class="eyebrow accent">AI POWERED BUSINESS INTELLIGENCE</p>
+          <h2>Answers you can trace<br><span>back to your data.</span></h2>
+          <p class="welcome-copy">Ask about sales, invoices, products, or shop performance. Every number in a report comes from an approved database query.</p>
+          <div class="prompt-grid" aria-label="Example questions">
+            <button class="prompt-card" type="button" data-prompt="Show yearly sales for the last five years"><span class="prompt-icon" aria-hidden="true">↗</span><span>Five-year sales trend<small>See performance by year</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button class="prompt-card" type="button" data-prompt="এই মাসের বিক্রি দেখাও"><span class="prompt-icon" aria-hidden="true">◷</span><span>এই মাসের বিক্রি<small>Bangla questions work too</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button class="prompt-card" type="button" data-prompt="Shop wise sales this year"><span class="prompt-icon" aria-hidden="true">▥</span><span>Shop-wise comparison<small>Compare authorized shops</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
+            <button class="prompt-card" type="button" data-prompt="Product wise sales this month"><span class="prompt-icon" aria-hidden="true">◉</span><span>Product performance<small>Discover leading products</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
+          </div>
+        </div>
+        <div class="messages" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+      </section>
+
+      <div class="composer-zone">
+        <div class="active-filters" id="active-filters" aria-live="polite"></div>
+        <form class="composer" id="chat-form"><label class="sr-only" for="question">Ask a reporting question</label><textarea id="question" rows="1" maxlength="1200" placeholder="Ask a question about your business data…" aria-describedby="composer-hint"></textarea><button class="send-button" id="send-button" type="submit" aria-label="Send question">➤</button></form>
+        <div class="composer-hint" id="composer-hint"><span>Enter to send · Shift + Enter for a new line</span><span>বাংলা · Banglish · English</span></div>
+      </div>
+    </main>
+
+    <aside class="filters-panel" id="filters-panel" aria-label="Report controls">
+      <div class="panel-head"><div><p class="eyebrow">REPORT CONTROLS</p><h2>Refine your view</h2></div><button class="icon-button panel-close" id="panel-close" type="button" aria-label="Close filters">×</button></div>
+      <div class="panel-body">
+        <div class="filter-block"><label for="shop-filter">Shop scope</label><p>Choose from shops your account can report on.</p><select id="shop-filter" disabled><option value="">All authorized shops</option></select></div>
+        <div class="filter-block"><label for="date-start">Date range</label><p>Optional dates override dates in your next question.</p><div class="date-fields"><div><span>From</span><input id="date-start" type="date"></div><div><span>Through</span><input id="date-end" type="date"></div></div><button class="text-button" id="clear-dates" type="button">Clear dates</button></div>
+        <div class="filter-help"><strong>How filters work</strong><p>Your selected shop is checked against your account permissions. Report dates use Asia/Dhaka. Filters apply when you send a question.</p></div>
+      </div>
+      <div class="panel-footer"><span class="mini-shield" aria-hidden="true">✓</span> Verified query results only</div>
+    </aside>
+    <div class="mobile-overlay" id="mobile-overlay" hidden></div>
+  </div>
+  <div class="sr-only" id="live-status" role="status" aria-live="polite"></div>
+</body>
+</html>
