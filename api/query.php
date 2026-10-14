@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../services/InternalQueryAuth.php';
-require_once __DIR__ . '/../services/QueryExecutor.php';
+require_once __DIR__ . '/../services/QueryDriver.php';
 require_once __DIR__ . '/../services/GeneratedSqlExecutor.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -73,42 +73,19 @@ try {
         queryApiError(400, 'INVALID_REQUEST');
     }
     if (is_array($envelope) && in_array(array_keys($envelope), [['sql','filters'],['sql','filters','offset']],true)) {
-        if (empty($config['reporting_ui']['generated_sql_enabled']) || !is_string($envelope['sql']) || !is_array($envelope['filters'])
+        if (!is_string($envelope['sql']) || !is_array($envelope['filters'])
             || array_diff(array_keys($envelope['filters']), ['shopno','date_start','date_end_inclusive'])) { queryApiError(400,'INVALID_REQUEST'); }
         $offset=$envelope['offset']??0;
         if (!is_int($offset)) { queryApiError(400,'INVALID_REQUEST'); }
         if (($envelope['filters']['shopno'] ?? null) !== null) { $scope = $scope->forShop($envelope['filters']['shopno']); }
-        $sqlSchema=json_decode((string)file_get_contents(__DIR__.'/../sql_schema.json'),true,512,JSON_THROW_ON_ERROR);
+        $sqlSchema=SqlSchema::load($config['sql_schema_path']);
         $executor=new GeneratedSqlExecutor(new GeneratedSqlValidator($sqlSchema,(int)$config['query_limits']['max_rows']),
             new SqlsrvQueryDriver($config['query_db'],$config['db']),$config['query_limits']);
         $result=$executor->execute($envelope['sql'],$scope,$envelope['filters'],$offset);
         $httpStatus=match($result['error']['code']??null){null=>200,'PLAN_REJECTED'=>422,'QUERY_TIMEOUT'=>504,'RESULT_TOO_LARGE'=>413,default=>503};
         queryApiReply($httpStatus,$result);
     }
-    if (!is_array($envelope) || array_keys($envelope) !== ['plan']
-        || !is_array($envelope['plan']) || array_is_list($envelope['plan'])) {
-        queryApiError(400, 'INVALID_REQUEST');
-    }
-    $catalogText = @file_get_contents(__DIR__ . '/../schema_catalog.json');
-    $rulesText = @file_get_contents(__DIR__ . '/../business_rules.json');
-    if (!is_string($catalogText) || !is_string($rulesText)) {
-        queryApiError(503, 'QUERY_UNAVAILABLE');
-    }
-    $catalog = json_decode($catalogText, true, 512, JSON_THROW_ON_ERROR);
-    $rules = json_decode($rulesText, true, 512, JSON_THROW_ON_ERROR);
-    $validator = new SqlValidator($catalog, $rules, $config['query_limits'] ?? []);
-    $driver = new SqlsrvQueryDriver($config['query_db'] ?? [], $config['db'] ?? []);
-    $executor = new QueryExecutor($validator, $driver, $config['query_limits'] ?? []);
-    $result = $executor->execute($envelope['plan'], $scope);
-    $code = $result['error']['code'] ?? null;
-    $status = match ($code) {
-        null => 200,
-        'PLAN_REJECTED' => 422,
-        'QUERY_TIMEOUT' => 504,
-        'RESULT_TOO_LARGE' => 413,
-        default => 503,
-    };
-    queryApiReply($status, $result);
+    queryApiError(400, 'INVALID_REQUEST');
 } catch (JsonException) {
     queryApiError($authenticated ? 503 : 400, $authenticated ? 'QUERY_UNAVAILABLE' : 'INVALID_REQUEST');
 } catch (Throwable) {

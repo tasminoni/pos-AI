@@ -273,7 +273,8 @@ try {
     option.value = shop;
     dom.shop.append(option);
   }
-  dom.shop.disabled = false;
+  dom.shop.disabled = !session.authorized_shopnos.length;
+  if (!session.authorized_shopnos.length) dom.shop.closest('label')?.setAttribute('hidden', '');
   state.history = Array.isArray(session.history) ? session.history : [];
   state.authenticated = true;
   renderHistory();

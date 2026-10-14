@@ -3,24 +3,14 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/InternalQueryAuth.php';
 
-interface ReportQueryClient
-{
-    public function run(array $plan): array;
-}
-
-/** Server-only signed transport to the Phase 2 API. */
-final class QueryApiClient implements ReportQueryClient
+/** Server-only signed SQL transport to the internal Query API. */
+final class QueryApiClient
 {
     private $transport;
 
     public function __construct(private array $config, ?callable $transport = null)
     {
         $this->transport = $transport ?? [$this, 'curlTransport'];
-    }
-
-    public function run(array $plan): array
-    {
-        return $this->send(['plan' => $plan]);
     }
 
     public function runSql(string $sql, array $filters = [], int $offset = 0): array

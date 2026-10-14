@@ -7,20 +7,28 @@ final class ReportScope
     private function __construct(
         public readonly string $userId,
         public readonly int $zid,
-        public readonly array $shopnos
+        public readonly array $shopnos,
+        public readonly string $schemaId = ''
     ) {}
 
     public static function forAccess(array $config): self
     {
-        if (($config['chat_require_session'] ?? true) !== false) {
-            return self::fromSession();
+        require_once __DIR__.'/SqlSchema.php';
+        $schema=SqlSchema::load($config['sql_schema_path']??__DIR__.'/../sql_schema.json');
+        $schemaId=hash('sha256',json_encode([$schema,$config['db']['server']??'',$config['db']['database']??''],JSON_THROW_ON_ERROR));
+        return self::forSchema($schema,$config,$schemaId);
+    }
+
+    public static function forSchema(array $schema,array $config,string $schemaId=''): self
+    {
+        $rules=$schema['access']['row_scope']??[];
+        $tenant=$rules['tenant']['value']??0;
+        $shops=array_map('strval',$rules['shop']['values']??[]);
+        if (($config['chat_require_session']??true)!==false) {
+            $session=self::fromSession();
+            return new self($session->userId,$session->zid,$session->shopnos,$schemaId);
         }
-        $zid = $config['defaults']['zid'] ?? null;
-        $shop = $config['defaults']['shopno'] ?? null;
-        if (!is_int($zid) || $zid <= 0 || !is_string($shop) || trim($shop) === '' || strlen($shop) > 64) {
-            throw new RuntimeException('Set DEFAULT_ZID and DEFAULT_SHOPNO for reporting without login.');
-        }
-        return new self('public-reporting', $zid, [trim($shop)]);
+        return new self('public-reporting',is_int($tenant)?$tenant:0,$shops,$schemaId);
     }
 
     public static function fromSession(): self
@@ -56,6 +64,6 @@ final class ReportScope
         if (!in_array($shopno, $this->shopnos, true)) {
             throw new InvalidArgumentException('Shop is outside the authenticated reporting scope.');
         }
-        return new self($this->userId, $this->zid, [$shopno]);
+        return new self($this->userId, $this->zid, [$shopno],$this->schemaId);
     }
 }

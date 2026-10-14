@@ -16,7 +16,14 @@ try {
     $tables=[];
     foreach($rows as $row) { $tables[$row['schema_name'].'.'.$row['table_name']]['columns'][$row['column_name']]=$row['data_type']; }
     $path=__DIR__.'/../sql_schema.json';
-    $json=json_encode(['observed_at'=>gmdate('c'),'tables'=>$tables],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);
+    $existing=is_file($path)?json_decode((string)file_get_contents($path),true,512,JSON_THROW_ON_ERROR):[];
+    foreach($tables as $name=>&$table){
+        $annotations=$existing['tables'][$name]??[];
+        unset($annotations['columns']);
+        $table=array_replace($annotations,$table);
+    }
+    unset($table);
+    $json=json_encode(array_replace($existing,['observed_at'=>gmdate('c'),'tables'=>$tables]),JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR);
     if (file_put_contents($path,$json,LOCK_EX)===false) { throw new RuntimeException('Schema snapshot could not be saved.'); }
     header('Content-Type: application/json');
     echo json_encode(['success'=>true,'tables'=>count($tables),'columns'=>count($rows)]);

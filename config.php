@@ -48,29 +48,18 @@ if (file_exists($envFile)) {
     loadEnvFile($envFile);
 }
 
-// Determine default provider: default to 'gemini' if GEMINI_API_KEY is present or AI_PROVIDER is set
-$provider = getenv('AI_PROVIDER') ?: (getenv('GEMINI_API_KEY') ? 'gemini' : (getenv('OPENAI_API_KEY') ? 'openai' : 'gemini'));
-
 // Return unified configuration array
 return [
-    'provider' => $provider,
+    'sql_schema_path' => __DIR__ . '/sql_schema.json',
+    'provider' => 'gemini',
     'gemini' => [
         'schema_cache_path' => __DIR__ . '/ai_schema_cache.json',
         'api_key' => getenv('GEMINI_API_KEY') ?: '',
         'model' => getenv('GEMINI_MODEL') ?: 'gemini-2.5-flash',
         'api_url' => getenv('GEMINI_API_URL') ?: 'https://generativelanguage.googleapis.com/v1beta/models',
-        'temperature' => 0.2,
         'sql_thinking_level' => getenv('GEMINI_SQL_THINKING_LEVEL') ?: 'low',
         'timeout_seconds' => (int)(getenv('GEMINI_TIMEOUT_SECONDS') ?: 25),
         'max_response_bytes' => (int)(getenv('GEMINI_MAX_RESPONSE_BYTES') ?: 65536),
-        'max_tokens' => 1500,
-    ],
-    'openai' => [
-        'api_key' => getenv('OPENAI_API_KEY') ?: '',
-        'model' => getenv('OPENAI_MODEL') ?: 'gpt-4o-mini',
-        'api_url' => 'https://api.openai.com/v1/chat/completions',
-        'temperature' => 0.2,
-        'max_tokens' => 1500,
     ],
     'db' => [
         'server' => getenv('DB_SERVER') ?: '',
@@ -80,10 +69,6 @@ return [
         'charset' => 'UTF-8',
         'trust_cert' => 'Yes',
         'login_timeout_seconds' => (int)(getenv('DB_LOGIN_TIMEOUT_SECONDS') ?: 5),
-    ],
-    'defaults' => [
-        'zid' => (int)(getenv('DEFAULT_ZID') ?: 100070),
-        'shopno' => getenv('DEFAULT_SHOPNO') ?: '',
     ],
     'mock_mode' => strtolower((string)(getenv('MOCK_DB_MODE') ?: 'false')) === 'true',
     'query_api' => [
@@ -106,14 +91,7 @@ return [
     'query_limits' => [
         'timeout_seconds' => (int)(getenv('QUERY_TIMEOUT_SECONDS') ?: 20),
         'max_rows' => (int)(getenv('QUERY_MAX_ROWS') ?: 100),
-        'max_offset' => (int)(getenv('QUERY_MAX_OFFSET') ?: 10000),
         'max_response_bytes' => (int)(getenv('QUERY_MAX_RESPONSE_BYTES') ?: 1048576),
-        'max_detail_days' => (int)(getenv('QUERY_MAX_DETAIL_DAYS') ?: 366),
-    ],
-    'reporting_ui' => [
-        'generated_sql_enabled' => strtolower((string)(getenv('AI_GENERATED_SQL') ?: 'false')) === 'true',
-        'insights_enabled' => strtolower((string)(getenv('REPORT_INSIGHTS_ENABLED') ?: 'true')) === 'true',
     ],
     'chat_require_session' => strtolower((string)(getenv('CHAT_REQUIRE_SESSION') ?: 'true')) !== 'false',
-    'local_preview_mode' => strtolower((string)(getenv('LOCAL_PREVIEW_MODE') ?: 'false')) === 'true',
 ];

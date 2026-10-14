@@ -81,8 +81,8 @@ class DatabaseManager
     }
 
     /**
-     * Legacy parameterized query helper. AI reporting uses SqlValidator and
-     * QueryExecutor instead; do not pass generated SQL to this method.
+     * Legacy parameterized query helper. AI reporting uses GeneratedSqlValidator and
+     * GeneratedSqlExecutor instead; do not pass generated SQL to this method.
      * 
      * @param string $sql The SQL query with ? placeholders
      * @param array $params Parameter values

@@ -210,6 +210,11 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
+            },
+            "column_meta": {
+                "xname": {
+                    "sensitive": true
+                }
             }
         },
         "dbo.caitem": {
@@ -759,6 +764,12 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
+            },
+            "date_column": "xworkingdate",
+            "column_meta": {
+                "xperson": {
+                    "sensitive": true
+                }
             }
         },
         "dbo.opdoheader_20260811": {
@@ -904,6 +915,11 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
+            },
+            "column_meta": {
+                "xperson": {
+                    "sensitive": true
+                }
             }
         },
         "dbo.opposmultiplecard": {
@@ -1000,7 +1016,8 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
-            }
+            },
+            "queryable": false
         },
         "dbo.oppossigninlog_20260811": {
             "columns": {
@@ -1022,7 +1039,8 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
-            }
+            },
+            "queryable": false
         },
         "dbo.oppossignoutlog": {
             "columns": {
@@ -1186,7 +1204,8 @@
                 "ztime": "datetime2",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
-            }
+            },
+            "queryable": false
         },
         "dbo.xroles": {
             "columns": {
@@ -1284,6 +1303,15 @@
                 "zuip": "varchar",
                 "zutime": "datetime2",
                 "zuuserid": "varchar"
+            },
+            "queryable": false,
+            "column_meta": {
+                "xname": {
+                    "sensitive": true
+                },
+                "xoldpass": {
+                    "sensitive": true
+                }
             }
         },
         "dbo.zbusiness": {
@@ -1327,5 +1355,23 @@
                 "zuuserid": "varchar"
             }
         }
-    }
+    },
+    "access": {
+        "row_scope": {
+            "tenant": {
+                "column": "zid",
+                "value": 500003,
+                "required": true
+            },
+            "shop": {
+                "column": "xshopno",
+                "values": [
+                    "FSM-00002"
+                ]
+            }
+        }
+    },
+    "notes": [
+        "Sales in this database mean SUM(opdoheader.xnetamt) where xstatusord=Confirmed; exclude Dismissed invoices. xtype is not a verified return indicator. Invoice identifiers are xdornum. Join header/detail on zid, xshopno, xdornum."
+    ]
 }

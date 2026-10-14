@@ -5,12 +5,13 @@ require_once __DIR__ . '/QueryApiClient.php';
 
 final class GeneratedReportService
 {
-    public function __construct(private GeminiService $ai, private QueryApiClient $query, private array $schema, private array $limits = []) {}
+    public function __construct(private GeminiService $ai, private QueryApiClient $query, private array $schema, private array $limits = []) { $this->schema=SqlSchema::normalize($schema); }
 
     public function handle(string $question, ?array $prior, ReportScope $scope, bool $nextPage = false, ?DateTimeImmutable $clock = null, array $filters = []): array
     {
         $started = microtime(true);
-        $now = ($clock ?? new DateTimeImmutable('now', new DateTimeZone('Asia/Dhaka')))->setTimezone(new DateTimeZone('Asia/Dhaka'));
+        $timezone=$this->schema['timezone'];
+        $now = ($clock ?? new DateTimeImmutable('now', new DateTimeZone($timezone)))->setTimezone(new DateTimeZone($timezone));
         $base = ['status'=>'error','assistant_text'=>'','error'=>null,'kpis'=>[],
             'table'=>['columns'=>[],'rows'=>[],'row_count'=>0,'export_ready'=>false],
             'chart'=>['type'=>'none','x'=>null,'y'=>null,'data'=>[]], 'filters'=>null,'time_range'=>null,
@@ -76,6 +77,7 @@ final class GeneratedReportService
                 return ['response'=>$base,'context'=>$prior];
             }
             if (($result['scope']['zid']??null)!==$scope->zid || ($result['scope']['shopnos']??null)!==$scope->shopnos
+                || ($scope->schemaId!==''&&($result['scope']['schema_id']??null)!==$scope->schemaId)
                 || $result['row_count']!==count($result['rows']) || count($result['rows'])>500) {
                 throw new RuntimeException('Internal query scope or result count did not match.');
             }
@@ -91,12 +93,12 @@ final class GeneratedReportService
             }
             $empty = !$result['rows'] || (count($result['rows'])===1 && count(array_filter($result['rows'][0],static fn($v)=>$v!==null))===0);
             $base['status']=$empty?'no_data':'ok';
-            $base['assistant_text']=$empty?'No matching records were found.':'Here are the database results. Invoice net amounts are stored values; returns are not calculated separately.';
+            $base['assistant_text']=$empty?'No matching records were found.':'Here are the database results for your question.';
             if ($result['truncated']) { $base['assistant_text'].=($result['next_offset']!==null?' Showing a page of '.count($result['rows']).' rows. Load the next data page for more.':' Showing the first '.count($result['rows']).' rows; narrow your question to see more detail.'); }
             $base['table']=['columns'=>$result['columns'],'rows'=>$empty?[]:$result['rows'],'row_count'=>$empty?0:$result['row_count'],'export_ready'=>true];
-            $base['filters']=['tenant_zid'=>$scope->zid,'shopnos'=>$scope->shopnos,'selected_shopno'=>$selectedShop];
+            $base['filters']=['tenant_zid'=>isset($this->schema['access']['row_scope']['tenant'])?$scope->zid:null,'shopnos'=>$scope->shopnos,'selected_shopno'=>$selectedShop];
             $base['time_range']=['start'=>$dates[0]??null,'end_exclusive'=>count($dates)>1?end($dates):null,
-                'timezone'=>'Asia/Dhaka','all_authorized_history'=>!$dates];
+                'timezone'=>$timezone,'all_authorized_history'=>!$dates];
             $base['pagination']['truncated']=$result['truncated'];
             $base['pagination']['page_size']=$result['page_size']??100;
             $base['pagination']['offset']=$offset;

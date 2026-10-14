@@ -111,4 +111,4 @@ assert.match(html, /Content-Security-Policy/);
 assert.match(html, /assets\/vendor\/chart\.umd\.min\.js/);
 assert.ok(chartBundle.length > 100000);
 
-console.log('Phase 4 UI tests passed.');
+console.log('UI tests passed.');

@@ -83,7 +83,7 @@ export class ReportView {
 
   scopeLabel() {
     const shops = this.response.filters?.shopnos;
-    if (!Array.isArray(shops) || !shops.length) return 'Authorized shops';
+    if (!Array.isArray(shops) || !shops.length) return 'Configured database';
     return shops.length === 1 ? `Shop ${text(shops[0])}` : `${shops.length} authorized shops`;
   }
 

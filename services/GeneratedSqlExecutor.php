@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/GeneratedSqlValidator.php';
-require_once __DIR__ . '/QueryExecutor.php';
+require_once __DIR__ . '/QueryDriver.php';
 
 final class GeneratedSqlExecutor
 {
@@ -14,6 +14,7 @@ final class GeneratedSqlExecutor
         $result = ['request_id'=>$id, 'status'=>'error', 'columns'=>[], 'rows'=>[], 'row_count'=>0,
             'scope'=>['zid'=>$scope->zid,'shopnos'=>$scope->shopnos], 'date_scope'=>null,
             'truncated'=>false, 'next_offset'=>null, 'error'=>null];
+        if($scope->schemaId!==''){$result['scope']['schema_id']=$scope->schemaId;}
         try {
             $compiled = $this->validator->compile($sql, $scope, $filters, $offset);
             $cursor = $this->driver->run($compiled['sql'], $compiled['params'], min(30, max(1, (int)($this->limits['timeout_seconds'] ?? 10))));

@@ -1,5 +1,2 @@
 .env
 ai_schema_cache.json
-.npm-phase4-cache/
-ui/assets/vendor/package/
-ui/assets/vendor/*.tgz

@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../services/ChatReportService.php';
 require_once __DIR__ . '/../services/GeneratedReportService.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -41,21 +40,21 @@ try {
         chatError(401, 'UNAUTHORIZED', 'Sign in to use reporting.');
     }
     try { $scope = ReportScope::forAccess($config); }
-    catch (Throwable) { chatError(401, 'UNAUTHORIZED', 'Sign in to use reporting.'); }
+    catch (Throwable) { chatError(503, 'REPORTING_CONFIGURATION', 'Check sql_schema.json and the reporting access configuration.'); }
     if (!is_string($_SESSION['_chat_csrf'] ?? null)) {
         $_SESSION['_chat_csrf'] = bin2hex(random_bytes(32));
     }
     if ($method === 'GET') {
         $history = [];
         foreach ($_SESSION['_report_conversations'] ?? [] as $conversationId => $entry) {
-            if (($entry['identity'] ?? null) !== [$scope->userId, $scope->zid, $scope->shopnos]) { continue; }
+            if (($entry['identity'] ?? null) !== [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId]) { continue; }
             $history[] = ['conversation_id' => $conversationId,
                 'updated_at' => $entry['updated_at'] ?? null,
                 'turns' => $entry['turns'] ?? []];
         }
         chatReply(200, ['status' => 'ready', 'csrf_token' => $_SESSION['_chat_csrf'],
             'authorized_shopnos' => $scope->shopnos,
-            'request' => ['action' => 'ask', 'question' => 'Show yearly sales for the last five years',
+            'request' => ['action' => 'ask', 'question' => 'Show a list of records',
                 'conversation_id' => null], 'max_question_bytes' => 1200, 'history' => $history]);
     }
     $csrf = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
@@ -108,24 +107,17 @@ try {
     } elseif (!isset($_SESSION['_report_conversations'][$id])) {
         chatError(404, 'CONVERSATION_NOT_FOUND', 'This reporting conversation is unavailable.');
     } elseif (($_SESSION['_report_conversations'][$id]['identity'] ?? null)
-        !== [$scope->userId, $scope->zid, $scope->shopnos]) {
+        !== [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId]) {
         chatError(404, 'CONVERSATION_NOT_FOUND', 'This reporting conversation is unavailable.');
     }
     $prior = $_SESSION['_report_conversations'][$id]['context'] ?? null;
-    $identity = [$scope->userId, $scope->zid, $scope->shopnos];
+    $identity = [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId];
     session_write_close(); // The internal Query API opens the same authenticated session.
 
     $config = require __DIR__ . '/../config.php';
-    $schema = new SchemaService(__DIR__ . '/../schema_catalog.json');
-    $rules = json_decode((string)file_get_contents(__DIR__ . '/../business_rules.json'), true, 64, JSON_THROW_ON_ERROR);
-    $service = new ChatReportService(new GeminiService($config['gemini'], $schema, $rules),
-        new QueryApiClient($config['query_api']), $schema, $rules, $config['query_limits'] ?? [],
-        (bool)($config['reporting_ui']['insights_enabled'] ?? false));
-    if (!empty($config['reporting_ui']['generated_sql_enabled'])) {
-        $sqlSchema=json_decode((string)file_get_contents(__DIR__.'/../sql_schema.json'),true,512,JSON_THROW_ON_ERROR);
-        $service=new GeneratedReportService(new GeminiService($config['gemini'],$schema,$rules),
-            new QueryApiClient($config['query_api']),$sqlSchema,$config['query_limits']);
-    }
+    $sqlSchema=SqlSchema::load($config['sql_schema_path']);
+    $service=new GeneratedReportService(new GeminiService($config['gemini']),
+        new QueryApiClient($config['query_api']),$sqlSchema,$config['query_limits']);
     $handled = $service->handle($question, $prior, $scope, $action === 'page', null, $filters);
 
     if (@session_start() !== true) {
@@ -133,7 +125,7 @@ try {
     }
     try { $after = ReportScope::forAccess($config); }
     catch (Throwable) { chatError(401, 'UNAUTHORIZED', 'Sign in to use reporting.'); }
-    if ([$after->userId, $after->zid, $after->shopnos] !== $identity) {
+    if ([$after->userId, $after->zid, $after->shopnos, $after->schemaId] !== $identity) {
         chatError(401, 'UNAUTHORIZED', 'The reporting session changed. Please retry.');
     }
     if (!is_array($_SESSION['_report_conversations'] ?? null)) {

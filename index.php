@@ -20,7 +20,7 @@ try {
 }
 
 echo json_encode([
-    'module' => 'Mobile POS AI Conversational Assistant',
+    'module' => 'Schema-driven AI Database Assistant',
     'status' => $databaseConnected ? 'active' : 'degraded',
     'database_connected' => $databaseConnected,
     'version' => '1.0.0',
@@ -33,6 +33,5 @@ echo json_encode([
     ],
     'active_provider' => $config['provider'] ?? 'gemini',
     'gemini_configured' => !empty($config['gemini']['api_key']) && $config['gemini']['api_key'] !== 'your_gemini_api_key_here',
-    'openai_configured' => !empty($config['openai']['api_key']) && $config['openai']['api_key'] !== 'your_openai_api_key_here',
     'database_target' => $config['db']['server'] . ' / ' . $config['db']['database'],
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);

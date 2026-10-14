@@ -3,14 +3,15 @@ declare(strict_types=1);
 require_once __DIR__.'/../services/GeneratedReportService.php';
 function checkFollowup(bool $condition,string $message):void{if(!$condition){throw new RuntimeException($message);}}
 session_id('bangla-followup-test'); $_SESSION=[];
-$scope=ReportScope::forAccess(['chat_require_session'=>false,'defaults'=>['zid'=>777,'shopno'=>'A']]);
+$schema['access']['row_scope']=['tenant'=>['column'=>'zid','value'=>777,'required'=>true],'shop'=>['column'=>'xshopno','values'=>['A']]];
+$scope=ReportScope::forSchema($schema,['chat_require_session'=>false]);
 $schema=['tables'=>['dbo.opdoheader'=>['columns'=>['zid'=>'int','xshopno'=>'varchar','xdornum'=>'varchar',
     'xworkingdate'=>'datetime','xnetamt'=>'numeric','xstatusord'=>'varchar']]]];
 $summarySql="SELECT SUM(h.xnetamt) AS total FROM dbo.opdoheader AS h WHERE h.xstatusord='Confirmed' AND h.xworkingdate >= '2025-10-13' AND h.xworkingdate < '2026-10-14'";
 $listSql="SELECT h.xdornum AS invoice_no, h.xworkingdate AS working_date, h.xnetamt AS net_amount FROM dbo.opdoheader AS h WHERE h.xstatusord='Confirmed' AND h.xworkingdate >= '2025-10-13' AND h.xworkingdate < '2026-10-14' ORDER BY h.xworkingdate DESC, h.xdornum DESC";
 $modelCalls=0;
 $ai=new GeminiService(['api_key'=>'TEST-SECRET','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function($url,$headers,$body)use(&$modelCalls,$summarySql,$listSql):array{
+    static function($url,$headers,$body)use(&$modelCalls,$summarySql,$listSql):array{
         $modelCalls++;$request=json_decode($body,true);$prompt=json_decode($request['contents'][0]['parts'][0]['text'],true);
         if($modelCalls===2){
             checkFollowup($prompt['question']==='আমি লিস্ট দেখতে চাই','Bangla follow-up was changed.');

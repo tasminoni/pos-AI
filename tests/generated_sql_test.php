@@ -9,7 +9,8 @@ $schema=['tables'=>[
     'dbo.opdodetail'=>['columns'=>['zid'=>'int','xshopno'=>'varchar','xdornum'=>'varchar','xitem'=>'varchar','xqty'=>'numeric']],
     'dbo.xusers'=>['columns'=>['zid'=>'int','xpassword'=>'varchar']],
 ]];
-$scope=ReportScope::forAccess(['chat_require_session'=>false,'defaults'=>['zid'=>777,'shopno'=>'A']]);
+$schema['access']['row_scope']=['tenant'=>['column'=>'zid','value'=>777,'required'=>true],'shop'=>['column'=>'xshopno','values'=>['A']]];
+$scope=ReportScope::forSchema($schema,['chat_require_session'=>false]);
 $validator=new GeneratedSqlValidator($schema,100);
 $sql="SELECT SUM(h.xnetamt) AS total FROM dbo.opdoheader AS h WHERE h.xstatusord = 'Confirmed' AND h.xworkingdate >= '2026-09-01' AND h.xworkingdate < '2026-10-01'";
 $compiled=$validator->compile($sql,$scope);
@@ -63,7 +64,7 @@ $tautology=$validator->compile('SELECT h.xnetamt FROM dbo.opdoheader AS h WHERE 
 assertSql(array_slice($tautology['params'],0,2)===[777,'A'],'An OR predicate must not escape the source scope.');
 $capture=[];
 $ai=new GeminiService(['api_key'=>'SECRET-KEY','model'=>'gemini-2.5-flash','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function($url,$headers,$body)use(&$capture,$sql):array{
+    static function($url,$headers,$body)use(&$capture,$sql):array{
         $capture=json_decode($body,true,512,JSON_THROW_ON_ERROR);
         assertSql(!str_contains($body,'SECRET-KEY') && !str_contains($body,'777'),'Model prompt leaked credentials or tenant.');
         return ['status'=>200,'body'=>json_encode(['candidates'=>[['content'=>['parts'=>[['text'=>json_encode(['status'=>'ready','sql'=>$sql,'title'=>'Confirmed net amounts','clarification_question'=>''])]]]]]])];
@@ -109,7 +110,7 @@ $again=$reporter->handle('September sales',null,$scope,false,new DateTimeImmutab
 assertSql($again['response']['metadata']['model_calls']===0 && $queryCalls===2,'Cached SQL must still fetch fresh database results.');
 $repairCalls=0;
 $repairAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function($url,$headers,$body)use(&$repairCalls,$sql):array{
+    static function($url,$headers,$body)use(&$repairCalls,$sql):array{
         $repairCalls++;$request=json_decode($body,true);$prompt=json_decode($request['contents'][0]['parts'][0]['text'],true);
         if($repairCalls===2){assertSql(isset($prompt['query_repair']['validation_reason']),'Repair feedback is missing.');}
         assertSql(!str_contains($body,'284425.00'),'Repair must not send result rows to the model.');
@@ -123,7 +124,7 @@ assertSql($repaired['response']['status']==='ok' && $repairCalls===2 && $queryCa
     && $repaired['response']['metadata']['sql_repaired'],'Invalid SQL must be repaired before any database request.');
 $blockedCalls=0;
 $blockedAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function()use(&$blockedCalls):array{
+    static function()use(&$blockedCalls):array{
         $blockedCalls++;
         return ['status'=>200,'body'=>json_encode(['candidates'=>[['content'=>['parts'=>[['text'=>json_encode([
             'status'=>'ready','sql'=>'SELECT u.xpassword AS secret FROM dbo.xusers AS u','title'=>'Unsafe','clarification_question'=>''])]]]]]])];
@@ -134,7 +135,7 @@ assertSql($blockedCalls===2 && $queryCalls===$beforeBlocked && $blocked['respons
     'Repair attempts must not bypass restricted table checks.');
 $timeoutCalls=0;
 $timeoutAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function()use(&$timeoutCalls,$sql):array{
+    static function()use(&$timeoutCalls,$sql):array{
         if(++$timeoutCalls===1){throw new GeminiPlanningException('AI_TIMEOUT','Timed out');}
         return ['status'=>200,'body'=>json_encode(['candidates'=>[['content'=>['parts'=>[['text'=>json_encode([
             'status'=>'ready','sql'=>$sql,'title'=>'Retried report','clarification_question'=>''])]]]]]])];
@@ -142,7 +143,7 @@ $timeoutAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite'
 assertSql($timeoutAi->generateSql('September sales',$schema,null,'2026-10-14')['status']==='ready' && $timeoutCalls===2,'AI timeout must receive one bounded retry.');
 $semanticCalls=0;$semanticQueries=0;
 $semanticAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
-    new SchemaService(__DIR__.'/../schema_catalog.json'),[],static function($url,$headers,$body)use(&$semanticCalls,$sql):array{
+    static function($url,$headers,$body)use(&$semanticCalls,$sql):array{
         $semanticCalls++;$request=json_decode($body,true);$prompt=json_decode($request['contents'][0]['parts'][0]['text'],true);
         if($semanticCalls===2){assertSql($prompt['query_repair']['validation_reason']==='aggregate_requires_numeric_expression','Safe SQL error category missing.');}
         assertSql(!str_contains($body,'284425.00'),'SQL execution repair leaked database results.');
