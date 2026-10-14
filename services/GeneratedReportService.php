@@ -32,11 +32,45 @@ final class GeneratedReportService
             $cached = $_SESSION['_sql_generation_cache'][$key] ?? null;
             $cacheHit = $nextPage || (is_array($cached) && ($cached['expires'] ?? 0) > time());
             $plan = $nextPage ? $prior['plan'] : ($cacheHit ? $cached['plan'] : $this->ai->generateSql($question,$this->schema,$prior,$now->format('Y-m-d'),$filters));
+            $generationCalls=$cacheHit?0:1;
+            $sqlRepaired=false;
             if ($plan['status'] === 'clarification') {
                 $base['status']='clarification'; $base['assistant_text']=$plan['clarification_question']; return ['response'=>$base,'context'=>$prior];
             }
-            (new GeneratedSqlValidator($this->schema, (int)($this->limits['max_rows']??100)))->compile($plan['sql'],$scope,$filters,$offset);
+            $validator=new GeneratedSqlValidator($this->schema, (int)($this->limits['max_rows']??100));
+            try { $validator->compile($plan['sql'],$scope,$filters,$offset); }
+            catch (QueryValidationException $error) {
+                if ($nextPage) { throw $error; }
+                if (microtime(true)-$started>=45) {
+                    throw new GeminiPlanningException('AI_TIMEOUT','The AI could not produce a valid query within the time budget. Please retry or clarify the question.');
+                }
+                $generationCalls++;
+                $sqlRepaired=true;
+                $plan=$this->ai->generateSql($question,$this->schema,$prior,$now->format('Y-m-d'),$filters,
+                    ['sql'=>$plan['sql'],'reason'=>$error->reason]);
+                if ($plan['status']==='clarification') {
+                    $base['status']='clarification'; $base['assistant_text']=$plan['clarification_question'];
+                    return ['response'=>$base,'context'=>$prior];
+                }
+                $validator->compile($plan['sql'],$scope,$filters,$offset);
+            }
             $result = $this->query->runSql($plan['sql'],$filters,$offset);
+            $safeSqlReasons=['aggregate_requires_numeric_expression','selected_column_missing_from_group_by',
+                'unknown_column','unknown_table','sql_syntax_error','incompatible_expression_types'];
+            if(!$nextPage && $generationCalls<2 && microtime(true)-$started<45
+                && ($result['error']['code']??null)==='QUERY_FAILED'
+                && in_array($result['error']['reason']??null,$safeSqlReasons,true)){
+                $generationCalls++;
+                $sqlRepaired=true;
+                $plan=$this->ai->generateSql($question,$this->schema,$prior,$now->format('Y-m-d'),$filters,
+                    ['sql'=>$plan['sql'],'reason'=>$result['error']['reason']]);
+                if($plan['status']==='clarification'){
+                    $base['status']='clarification';$base['assistant_text']=$plan['clarification_question'];
+                    return ['response'=>$base,'context'=>$prior];
+                }
+                $validator->compile($plan['sql'],$scope,$filters,$offset);
+                $result=$this->query->runSql($plan['sql'],$filters,$offset);
+            }
             if ($result['status'] !== 'ok') {
                 $base['assistant_text']=$result['error']['message']; $base['error']=$result['error'];
                 return ['response'=>$base,'context'=>$prior];
@@ -69,7 +103,8 @@ final class GeneratedReportService
             $base['pagination']['next_offset']=$result['next_offset'];
             $base['metadata']+=['title'=>$plan['title'],'query_request_id'=>$result['request_id'],'numeric_source'=>'validated_ai_sql',
                 'schema_cache_used'=>!empty($plan['_schema_cache_used']),
-                'model_calls'=>$cacheHit?0:1,'query_cache_hit'=>$cacheHit,'duration_ms'=>(int)round((microtime(true)-$started)*1000)];
+                'model_calls'=>$generationCalls,'query_cache_hit'=>$cacheHit&&$generationCalls===0,'sql_repaired'=>$sqlRepaired,
+                'duration_ms'=>(int)round((microtime(true)-$started)*1000)];
             $numerics=array_values(array_filter($result['columns'],static fn($c)=>in_array($c['type'],['decimal','integer'],true)));
             if (!$empty && count($result['columns'])===2 && count($result['rows'])>1 && $numerics) {
                 [$dimension,$measure]=$result['columns'];

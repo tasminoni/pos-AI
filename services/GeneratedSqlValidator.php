@@ -47,7 +47,7 @@ final class GeneratedSqlValidator
         if (strlen($sql) > 12000) { $this->reject(); }
         $cursorOffset = 0;
         while ($cursorOffset < strlen($sql)) {
-            if (!preg_match('/\G\s*(?:(N?\x27(?:[^\x27]|\x27\x27)*\x27)|(\[[A-Za-z_][A-Za-z0-9_]*\])|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|(<>|!=|<=|>=|[(),.*+\/%=<>-]))/Ai', $sql, $match, 0, $cursorOffset)) {
+            if (!preg_match('/\G\s*(?:(N?\x27(?:[^\x27]|\x27\x27)*\x27)|(\[(?:[^\]\r\n]|\]\])+\])|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|(<>|!=|<=|>=|[(),.*+\/%=<>-]))/Ai', $sql, $match, 0, $cursorOffset)) {
                 if (trim(substr($sql, $cursorOffset)) === '') { break; }
                 $this->reject();
             }
@@ -55,7 +55,7 @@ final class GeneratedSqlValidator
             if (($match[1] ?? '') !== '') {
                 $literal = preg_replace('/^N/i', '', $match[1]);
                 $this->tokens[] = ['string', str_replace("''", "'", substr($literal, 1, -1))];
-            } elseif (($match[2] ?? '') !== '') { $this->tokens[] = ['id', substr($match[2], 1, -1)]; }
+            } elseif (($match[2] ?? '') !== '') { $this->tokens[] = ['id', str_replace(']]',']',substr($match[2], 1, -1))]; }
             elseif (($match[3] ?? '') !== '') { $this->tokens[] = ['id', $match[3]]; }
             elseif (($match[4] ?? '') !== '') { $this->tokens[] = ['number', $match[4]]; }
             else { $this->tokens[] = ['symbol', $match[5]]; }
@@ -79,7 +79,7 @@ final class GeneratedSqlValidator
                 $alias = $this->identifier();
                 if (isset($this->outputAliases[strtolower($alias)])) { $this->reject(); }
                 $this->outputAliases[strtolower($alias)] = true;
-                if (preg_match('/\b(?:SUM|AVG|COUNT|MIN|MAX)\(/',$expression)) { $this->aggregateAliases[]=$alias; }
+                if (preg_match('/\b(?:SUM|AVG|COUNT|COUNT_BIG|MIN|MAX)\(/',$expression)) { $this->aggregateAliases[]=$alias; }
                 $expression .= ' AS ' . $this->quote($alias);
             }
             $select[] = $expression;
@@ -163,8 +163,18 @@ final class GeneratedSqlValidator
                 if ($this->take('.')) {
                     $column = $this->identifier(); $this->references[] = [$token[1], $column];
                     $left = $this->quote($token[1]) . '.' . $this->quote($column);
+                } elseif ($name==='CASE') {
+                    $clauses=[];
+                    while ($this->take('WHEN')) {
+                        if (count($clauses)>=10) { $this->reject(); }
+                        $condition=$this->expression(); $this->expect('THEN'); $value=$this->expression();
+                        $clauses[]="WHEN $condition THEN $value";
+                    }
+                    if (!$clauses) { $this->reject(); }
+                    $otherwise=$this->take('ELSE')?' ELSE '.$this->expression():'';
+                    $this->expect('END'); $left='CASE '.implode(' ',$clauses).$otherwise.' END';
                 } elseif ($this->take('(')) {
-                    if (!in_array($name, ['SUM','AVG','COUNT','MIN','MAX','YEAR','MONTH','DAY','DATEPART','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST'], true)) { $this->reject(); }
+                    if (!in_array($name, ['SUM','AVG','COUNT','COUNT_BIG','MIN','MAX','YEAR','MONTH','DAY','DATEPART','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST','LEN','LOWER','UPPER','LTRIM','RTRIM','CEILING','FLOOR','SUBSTRING'], true)) { $this->reject(); }
                     if ($name === 'CAST') {
                         $arg = $this->expression(); $this->expect('AS'); $type = $this->identifier();
                         if (!in_array(strtolower($type), ['date','datetime','int','bigint','decimal','numeric','varchar'], true)) { $this->reject(); }
@@ -179,7 +189,7 @@ final class GeneratedSqlValidator
                         if (!in_array($part, ['year','month','day','quarter','week'], true)) { $this->reject(); }
                         $this->expect(','); $arg = $this->expression(); $this->expect(')');
                         $left = "DATEPART($part, $arg)";
-                    } elseif ($name === 'COUNT' && $this->take('*')) { $this->expect(')'); $left = 'COUNT(*)'; }
+                    } elseif (in_array($name,['COUNT','COUNT_BIG'],true) && $this->take('*')) { $this->expect(')'); $left = "$name(*)"; }
                     else {
                         $distinct = $this->take('DISTINCT') ? 'DISTINCT ' : '';
                         $args = $this->expressionList(); $this->expect(')'); $left = "$name($distinct$args)";
@@ -189,13 +199,18 @@ final class GeneratedSqlValidator
                 else { $this->reject(); }
             } else { $this->reject(); }
         }
-        $precedence = ['OR'=>1,'AND'=>2,'='=>3,'!='=>3,'<>'=>3,'<'=>3,'>'=>3,'<='=>3,'>='=>3,'IS'=>3,'IN'=>3,'LIKE'=>3,'BETWEEN'=>3,'+'=>4,'-'=>4,'*'=>5,'/'=>5,'%'=>5];
+        $precedence = ['OR'=>1,'AND'=>2,'='=>3,'!='=>3,'<>'=>3,'<'=>3,'>'=>3,'<='=>3,'>='=>3,'IS'=>3,'IN'=>3,'LIKE'=>3,'BETWEEN'=>3,'NOT'=>3,'+'=>4,'-'=>4,'*'=>5,'/'=>5,'%'=>5];
         while (($precedence[$this->peek()] ?? -1) >= $minimum) {
             $operator = $this->next()[1]; $upper = strtoupper($operator); $level = $precedence[$upper];
+            $negation='';
+            if ($upper==='NOT') {
+                $upper=$this->next()[1]; $upper=strtoupper($upper); $negation='NOT ';
+                if (!in_array($upper,['IN','LIKE','BETWEEN'],true)) { $this->reject(); }
+            }
             if ($upper === 'IS') { $not = $this->take('NOT') ? ' NOT' : ''; $this->expect('NULL'); $left = "($left IS$not NULL)"; }
-            elseif ($upper === 'IN') { $this->expect('('); $values = $this->expressionList(); $this->expect(')'); $left = "($left IN ($values))"; }
-            elseif ($upper === 'BETWEEN') { $start = $this->expression(4); $this->expect('AND'); $end = $this->expression(4); $left = "($left BETWEEN $start AND $end)"; }
-            else { $right = $this->expression($level + 1); $left = "($left $upper $right)"; }
+            elseif ($upper === 'IN') { $this->expect('('); $values = $this->expressionList(); $this->expect(')'); $left = "($left {$negation}IN ($values))"; }
+            elseif ($upper === 'BETWEEN') { $start = $this->expression(4); $this->expect('AND'); $end = $this->expression(4); $left = "($left {$negation}BETWEEN $start AND $end)"; }
+            else { $right = $this->expression($level + 1); $left = "($left $negation$upper $right)"; }
         }
         $this->depth--;
         return $left;
@@ -206,7 +221,7 @@ final class GeneratedSqlValidator
         $parts = []; do { $parts[] = $this->expression(); } while ($this->take(','));
         return implode(', ', $parts);
     }
-    private function quote(string $name): string { return '[' . $name . ']'; }
+    private function quote(string $name): string { return '[' . str_replace(']',']]', $name) . ']'; }
     private function bind(mixed $value): string { $index = count($this->bindings); $this->bindings[] = $value; return '{B' . $index . '}'; }
     private function peek(): string { return strtoupper($this->tokens[$this->position][1] ?? ''); }
     private function next(): array { if (!isset($this->tokens[$this->position])) { $this->reject(); } return $this->tokens[$this->position++]; }

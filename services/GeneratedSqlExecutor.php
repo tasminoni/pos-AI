@@ -10,6 +10,7 @@ final class GeneratedSqlExecutor
     public function execute(string $sql, ReportScope $scope, array $filters = [], int $offset = 0): array
     {
         $id = bin2hex(random_bytes(8)); $started = microtime(true); $outcome = 'QUERY_FAILED';
+        $safeReason=null;
         $result = ['request_id'=>$id, 'status'=>'error', 'columns'=>[], 'rows'=>[], 'row_count'=>0,
             'scope'=>['zid'=>$scope->zid,'shopnos'=>$scope->shopnos], 'date_scope'=>null,
             'truncated'=>false, 'next_offset'=>null, 'error'=>null];
@@ -52,7 +53,7 @@ final class GeneratedSqlExecutor
             $result['next_offset']=$result['truncated'] && $compiled['can_page'] && $next<=10000?$next:null;
             return $result;
         } catch (QueryValidationException) { $outcome='PLAN_REJECTED'; }
-        catch (QueryRunException $error) { $outcome=$error->publicCode; }
+        catch (QueryRunException $error) { $outcome=$error->publicCode; $safeReason=$error->safeReason; }
         catch (Throwable) { $outcome='QUERY_FAILED'; }
         finally {
             error_log('ai_generated_sql_audit '.json_encode(['request_id'=>$id, 'sql_hash'=>hash('sha256',$sql),
@@ -63,6 +64,7 @@ final class GeneratedSqlExecutor
             'QUERY_TIMEOUT'=>'The query timed out. Try a narrower period.',
             default=>'The generated report could not be executed.',
         }];
+        if($safeReason!==null){$result['error']['reason']=$safeReason;}
         return $result;
     }
 }

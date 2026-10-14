@@ -6,7 +6,7 @@ require_once dirname(__DIR__) . '/db.php';
 
 final class QueryRunException extends RuntimeException
 {
-    public function __construct(public readonly string $publicCode = 'QUERY_FAILED')
+    public function __construct(public readonly string $publicCode = 'QUERY_FAILED', public readonly ?string $safeReason = null)
     {
         parent::__construct('Reporting query failed.');
     }
@@ -67,12 +67,18 @@ final class SqlsrvQueryDriver implements QueryDriver
         if ($statement === false) {
             $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
             $timeout = false;
+            $safeReason=null;
             foreach (is_array($errors) ? $errors : [] as $error) {
                 if (in_array($error['SQLSTATE'] ?? '', ['HYT00', 'HYT01'], true)) {
                     $timeout = true;
                 }
+                $safeReason??=match((int)($error['code']??0)){
+                    8117=>'aggregate_requires_numeric_expression',8120=>'selected_column_missing_from_group_by',
+                    207=>'unknown_column',208=>'unknown_table',102,156=>'sql_syntax_error',
+                    245,8114=>'incompatible_expression_types',default=>null,
+                };
             }
-            throw new QueryRunException($timeout ? 'QUERY_TIMEOUT' : 'QUERY_FAILED');
+            throw new QueryRunException($timeout ? 'QUERY_TIMEOUT' : 'QUERY_FAILED',$safeReason);
         }
         $metadata = sqlsrv_field_metadata($statement);
         if (!is_array($metadata)) {

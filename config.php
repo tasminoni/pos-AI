@@ -60,6 +60,7 @@ return [
         'model' => getenv('GEMINI_MODEL') ?: 'gemini-2.5-flash',
         'api_url' => getenv('GEMINI_API_URL') ?: 'https://generativelanguage.googleapis.com/v1beta/models',
         'temperature' => 0.2,
+        'sql_thinking_level' => getenv('GEMINI_SQL_THINKING_LEVEL') ?: 'low',
         'timeout_seconds' => (int)(getenv('GEMINI_TIMEOUT_SECONDS') ?: 25),
         'max_response_bytes' => (int)(getenv('GEMINI_MAX_RESPONSE_BYTES') ?: 65536),
         'max_tokens' => 1500,
