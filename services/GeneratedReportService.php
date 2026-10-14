@@ -16,7 +16,7 @@ final class GeneratedReportService
             'table'=>['columns'=>[],'rows'=>[],'row_count'=>0,'export_ready'=>false],
             'chart'=>['type'=>'none','x'=>null,'y'=>null,'data'=>[]], 'filters'=>null,'time_range'=>null,
             'pagination'=>['page_size'=>100,'offset'=>0,'truncated'=>false,'next_offset'=>null],
-            'metadata'=>['report'=>'generated_sql','group_by'=>null], 'insights'=>[]];
+            'metadata'=>['report'=>'generated_sql','group_by'=>null], 'insights'=>[], 'analysis'=>null];
         try {
             $offset=0;
             if ($nextPage) {
@@ -95,6 +95,10 @@ final class GeneratedReportService
             $base['status']=$empty?'no_data':'ok';
             $base['assistant_text']=$empty?'No matching records were found.':'Here are the database results for your question.';
             if ($result['truncated']) { $base['assistant_text'].=($result['next_offset']!==null?' Showing a page of '.count($result['rows']).' rows. Load the next data page for more.':' Showing the first '.count($result['rows']).' rows; narrow your question to see more detail.'); }
+            $presentation=ReportAnalysis::validatePresentation($plan['presentation']??[]);
+            $labels=array_column($presentation['column_labels'],'label','name');
+            foreach($result['columns'] as &$column){if(isset($labels[$column['name']])){$column['label']=$labels[$column['name']];}}
+            unset($column);
             $base['table']=['columns'=>$result['columns'],'rows'=>$empty?[]:$result['rows'],'row_count'=>$empty?0:$result['row_count'],'export_ready'=>true];
             $base['filters']=['tenant_zid'=>isset($this->schema['access']['row_scope']['tenant'])?$scope->zid:null,'shopnos'=>$scope->shopnos,'selected_shopno'=>$selectedShop];
             $base['time_range']=['start'=>$dates[0]??null,'end_exclusive'=>count($dates)>1?end($dates):null,
@@ -108,19 +112,28 @@ final class GeneratedReportService
                 'model_calls'=>$generationCalls,'query_cache_hit'=>$cacheHit&&$generationCalls===0,'sql_repaired'=>$sqlRepaired,
                 'duration_ms'=>(int)round((microtime(true)-$started)*1000)];
             $numerics=array_values(array_filter($result['columns'],static fn($c)=>in_array($c['type'],['decimal','integer'],true)));
-            if (!$empty && count($result['columns'])===2 && count($result['rows'])>1 && $numerics) {
-                [$dimension,$measure]=$result['columns'];
-                if (in_array($measure['type'],['decimal','integer'],true)) {
-                    $base['chart']=['type'=>($dimension['type']==='date'||preg_match('/year|month|day|period/i',$dimension['name']))?'line':'bar',
-                        'x'=>$dimension['name'],'y'=>$measure['name'],'data'=>$result['rows'],'partial_page'=>$result['truncated']];
-                }
+            if (!$empty) {
+                $compiled=$validator->compile($plan['sql'],$scope,$filters,$offset);
+                $analysisPresentation=$presentation;
+                if ($presentation['analysis'] && (!in_array($presentation['y'],$compiled['aggregate_aliases'],true)
+                    || !str_contains($compiled['sql'],' GROUP BY '))) { $analysisPresentation['period_grain']='none'; }
+                $bounds=[];
+                preg_match_all("/>=\\s*N?'(\\d{4}-\\d{2}-\\d{2})'/i",$plan['sql'],$starts);
+                preg_match_all("/<\\s*N?'(\\d{4}-\\d{2}-\\d{2})'/i",$plan['sql'],$ends);
+                if($starts[1]){$bounds['start']=max($starts[1]);}if($ends[1]){$bounds['end_exclusive']=min($ends[1]);}
+                if(isset($filters['date_start'])){$bounds['start']=$filters['date_start'];$bounds['end_exclusive']=(new DateTimeImmutable($filters['date_end_inclusive']))->modify('+1 day')->format('Y-m-d');}
+                $subset=$result['truncated']||$offset>0||preg_match('/^\\s*SELECT\\s+(?:DISTINCT\\s+)?TOP\\b/i',$plan['sql']);
+                $visual=ReportAnalysis::build($result,$analysisPresentation,$now,$bounds,(bool)$subset);
+                $base['chart']=$visual['chart'];$base['insights']=array_map(static fn($message)=>ReportAnalysis::friendlyText($message,$presentation),$visual['insights']);$base['analysis']=$visual['analysis'];
+                $base['metadata']['presentation']=$visual['presentation'];
+                if($base['insights']){$base['assistant_text']=implode(' ',$base['insights']);}
             }
             if (!$empty && count($result['rows'])===1 && count($result['columns'])===1 && $numerics) {
                 $column=$numerics[0]; $base['kpis'][]=['id'=>$column['name'],'label'=>$plan['title'],'value'=>$result['rows'][0][$column['name']],
                     'value_type'=>$column['type'],'source'=>'validated_ai_sql'];
             }
             $context=['report'=>'generated_sql','sql'=>$plan['sql'],'question'=>$question,'title'=>$plan['title'],
-                'columns'=>$result['columns'],'presentation'=>count($result['columns'])===1?'summary':'list',
+                'columns'=>$result['columns'],'presentation'=>$presentation,
                 'plan'=>$plan,'filters'=>$filters,
                 'cache_key'=>$key,'cache_plan'=>$plan,
                 'date_start'=>$dates[0]??null,'date_end_exclusive'=>count($dates)>1?end($dates):null,'next_offset'=>$result['next_offset']];

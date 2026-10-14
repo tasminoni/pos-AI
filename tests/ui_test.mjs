@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { ChatApi } from '../ui/assets/api.mjs';
 import { buildChartConfig } from '../ui/assets/charts.mjs';
 import { ReportView } from '../ui/assets/report-view.mjs';
-import { chartPoints, compareDecimal, sortRows, toCsv } from '../ui/assets/report-utils.mjs';
+import { chartPoints, columnLabel, compareDecimal, dateRangeLabel, formatDate, formatNumber, formatValue, sortRows, toCsv } from '../ui/assets/report-utils.mjs';
 
 class FakeNode {
   constructor(tag) { this.tag = tag; this.children = []; this.attributes = {}; this.events = {}; this._text = ''; }
@@ -62,6 +62,17 @@ assert.match(csv, /"বাংলা ""item"""/);
 assert.equal(chartPoints({ x: 'product', y: 'sales_amount', data: [{ product: 'X', sales_amount: '9007199254740993' }] }), null);
 assert.equal(buildChartConfig({ x: 'product', y: 'sales_amount', data: [{ product: 'X', sales_amount: '-1' }] }, 'pie'), null);
 assert.equal(buildChartConfig(response.chart, 'doughnut').type, 'doughnut');
+assert.equal(buildChartConfig({ x: 'period', y: 'amount', data: [{ period: '2026-01', amount: '0' }] }, 'pie'), null);
+const analysisView = new ReportView({ ...response,
+  chart: { ...response.chart, type: 'pie' },
+  insights: ['Highest complete period: February'],
+  analysis: { period_changes: [{ from: '2026-01', to: '2026-02', percent_change: 25, adjacent_periods: true },
+    { from: '2026-02', to: malicious, percent_change: null, adjacent_periods: false }] },
+});
+assert.equal(analysisView.chartKind, 'pie');
+assert.match(analysisView.root.textContent, /Highest complete period: February/);
+assert.match(analysisView.root.textContent, /\+25\.00%/);
+assert.match(analysisView.root.textContent, /N\/A \(gap\)/);
 
 let calls = 0;
 const api = new ChatApi('../api/chat.php', async (url, options) => {
@@ -85,6 +96,27 @@ await api.ask('Sales this month', null, { shopno: 'B', date_start: '2026-10-01',
 await api.page('a'.repeat(32));
 assert.equal(calls, 3);
 
+const historyId = 'a'.repeat(32);
+const savedTurns = [{ question: 'Show sales', response }];
+const historyApi = new ChatApi('/chat', async (url, options) => {
+  assert.equal(options.credentials, 'same-origin');
+  assert.equal(options.headers['X-CSRF-Token'], 'history-csrf');
+  assert.deepEqual(JSON.parse(options.body), { action: 'restore', question: '', conversation_id: historyId });
+  return { status: 200, text: async () => JSON.stringify({ status: 'restored', conversation_id: historyId, turns: savedTurns }) };
+});
+assert.throws(() => historyApi.page(historyId), error => error.code === 'NO_SESSION');
+await assert.rejects(() => historyApi.restore(historyId), error => error.code === 'NO_SESSION');
+historyApi.csrfToken = 'history-csrf';
+assert.deepEqual((await historyApi.restore(historyId)).turns, savedTurns);
+const missingHistoryApi = new ChatApi('/chat', async () => ({ status: 404,
+  text: async () => JSON.stringify({ status: 'error', error: { code: 'CONVERSATION_NOT_FOUND' } }) }));
+missingHistoryApi.csrfToken = 'history-csrf';
+await assert.rejects(() => missingHistoryApi.restore(historyId), error => error.code === 'CONVERSATION_NOT_FOUND');
+const mismatchedHistoryApi = new ChatApi('/chat', async () => ({ status: 200,
+  text: async () => JSON.stringify({ status: 'restored', conversation_id: 'b'.repeat(32), turns: savedTurns }) }));
+mismatchedHistoryApi.csrfToken = 'history-csrf';
+await assert.rejects(() => mismatchedHistoryApi.restore(historyId), error => error.code === 'INVALID_HISTORY');
+
 assert.equal(new ChatApi().url, new URL('../api/chat.php', import.meta.url).href);
 const receiverApi = new ChatApi('/chat', async function () {
   assert.equal(this, globalThis, 'Fetch must retain its browser global receiver');
@@ -101,7 +133,43 @@ await assert.rejects(() => signedOutApi.bootstrap(), error => error.code === 'UN
 const app = readFileSync(new URL('../ui/assets/app.mjs', import.meta.url), 'utf8');
 const generatedView = new ReportView({ ...response, metadata: { report: 'generated_sql', title: 'Confirmed net amounts' },
   kpis: [{ id: 'total', label: 'Confirmed net amounts', value: '284425.00', source: 'validated_ai_sql' }] });
-assert.ok(generatedView.root.textContent.includes('284425.00'), 'Validated generated-SQL KPI was not rendered.');
+assert.ok(generatedView.root.textContent.includes('284,425.00'), 'Readable generated-SQL KPI was not rendered.');
+assert.equal(generatedView.response.kpis[0].value, '284425.00', 'Formatting must preserve the source amount.');
+assert.equal(columnLabel({ name: 'TotalSales' }), 'Total Sales');
+assert.equal(columnLabel({ name: 'xnetamt', label: 'Net amount' }), 'Net amount');
+assert.equal(formatDate('2026-08-01 00:00:00', { grain: 'month' }), 'August 2026');
+assert.equal(formatDate('2026-10-14 00:00:00'), '14 Oct 2026');
+assert.match(formatDate('2026-10-14 14:35:49'), /14 Oct 2026, 2:35 pm/i);
+assert.match(formatDate('14:35:49'), /2:35 pm/i);
+assert.match(formatDate('2026-10-14T08:35:00Z', { timezone: 'Asia/Dhaka' }), /14 Oct 2026, 2:35 pm/i);
+assert.equal(formatDate('2026-02-30'), '2026-02-30', 'Invalid dates must not be silently shifted.');
+assert.equal(formatNumber('9007199254740993.01'), '9,007,199,254,740,993.01');
+assert.equal(formatValue('2026', { name: 'year', type: 'integer' }), '2026');
+assert.equal(formatValue('000123456', { name: 'invoice_no', type: 'integer' }), '000123456');
+assert.equal(formatValue(null, { name: 'amount', type: 'decimal' }), '—');
+assert.equal(formatValue('0.00', { name: 'amount', type: 'decimal' }), '0.00');
+assert.equal(dateRangeLabel({ start: '2026-04-01', end_exclusive: '2026-05-01' }), '1 Apr 2026 – 30 Apr 2026');
+assert.equal(dateRangeLabel({ all_authorized_history: true }), 'All available dates');
+const readableColumns = [{ name: 'month', label: 'Month', type: 'date' }, { name: 'TotalSales', label: 'Total sales', type: 'decimal' }];
+const readableRows = [{ month: '2026-08-01 00:00:00', TotalSales: '417840.00' }];
+const readableResponse = { ...response, table: { columns: readableColumns, rows: readableRows, row_count: 1 },
+  chart: { type: 'bar', x: 'month', y: 'TotalSales', data: readableRows },
+  metadata: { report: 'generated_sql', title: 'Monthly sales', presentation: { x: 'month', y: 'TotalSales', period_grain: 'month' } },
+  analysis: { highest_period: { period: '2026-08-01 00:00:00', value: '417840.00', tied_periods: [] },
+    latest_change: { from: '2026-08-01', to: '2026-09-01', percent_change: -31.93, direction: 'decreasing' } },
+};
+const readableView = new ReportView(readableResponse);
+assert.match(readableView.root.textContent, /August 2026/);
+assert.match(readableView.root.textContent, /417,840\.00/);
+assert.match(readableView.root.textContent, /Highest month/);
+assert.match(readableView.root.textContent, /-31\.93%/);
+assert.equal(readableView.root.textContent.includes('2026-08-01 00:00:00'), false);
+assert.equal(readableView.root.textContent.includes('TotalSales'), false);
+assert.deepEqual(chartConfig.data.labels, ['August 2026']);
+assert.equal(chartConfig.data.datasets[0].label, 'Total sales');
+assert.match(chartConfig.options.plugins.tooltip.callbacks.label({ label: 'August 2026', dataIndex: 0 }), /417,840\.00/);
+assert.match(toCsv(readableColumns.map(column => ({ ...column, display_grain: 'month' })), readableRows), /August 2026/);
+assert.match(toCsv(readableColumns, readableRows), /"Total sales"/);
 const report = readFileSync(new URL('../ui/assets/report-view.mjs', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../ui/index.html', import.meta.url), 'utf8');
 const chartBundle = readFileSync(new URL('../ui/assets/vendor/chart.umd.min.js', import.meta.url));

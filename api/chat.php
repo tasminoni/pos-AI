@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../services/GeneratedReportService.php';
+require_once __DIR__ . '/../services/ConversationHistory.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -9,6 +10,16 @@ header('X-Content-Type-Options: nosniff');
 
 function chatReply(int $status, array $payload): never
 {
+    if ($status >= 400) {
+        $code=$payload['error']['code']??'UNKNOWN';
+        $reason=$payload['error']['reason']??null;
+        error_log('chat_error '.json_encode([
+            'http_status'=>$status,
+            'code'=>is_string($code)&&preg_match('/^[A-Z_]{1,64}$/D',$code)?$code:'UNKNOWN',
+            'reason'=>is_string($reason)&&preg_match('/^[a-z_]{1,64}$/D',$reason)?$reason:null,
+            'query_request_id'=>$payload['metadata']['query_request_id']??null,
+        ],JSON_THROW_ON_ERROR));
+    }
     http_response_code($status);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
@@ -50,7 +61,7 @@ try {
             if (($entry['identity'] ?? null) !== [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId]) { continue; }
             $history[] = ['conversation_id' => $conversationId,
                 'updated_at' => $entry['updated_at'] ?? null,
-                'turns' => $entry['turns'] ?? []];
+                'turns' => ConversationHistory::summaries($entry)];
         }
         chatReply(200, ['status' => 'ready', 'csrf_token' => $_SESSION['_chat_csrf'],
             'authorized_shopnos' => $scope->shopnos,
@@ -90,11 +101,11 @@ try {
         || (array_key_exists('date_start', $filters) !== array_key_exists('date_end_inclusive', $filters))) {
         chatError(400, 'INVALID_FILTERS', 'Choose valid reporting filters.');
     }
-    if (!in_array($action, ['ask', 'page'], true) || !is_string($question)
+    if (!in_array($action, ['ask', 'page', 'restore'], true) || !is_string($question)
         || ($action === 'ask' && ($question === '' || strlen($question) > 1200))
-        || ($action === 'page' && $question !== '')
+        || ($action !== 'ask' && $question !== '')
         || ($id !== null && (!is_string($id) || !preg_match('/^[a-f0-9]{32}$/D', $id)))
-        || ($action === 'page' && $filters !== [])
+        || ($action !== 'ask' && $filters !== [])
         || array_diff(array_keys($request), ['action', 'question', 'conversation_id', 'filters'])) {
         chatError(400, 'INVALID_REQUEST', 'The request format is invalid.');
     }
@@ -102,13 +113,18 @@ try {
         $_SESSION['_report_conversations'] = [];
     }
     if ($id === null) {
-        if ($action === 'page') { chatError(400, 'INVALID_REQUEST', 'A conversation is required for another page.'); }
+        if ($action !== 'ask') { chatError(400, 'INVALID_REQUEST', 'Choose a reporting conversation.'); }
         $id = bin2hex(random_bytes(16));
     } elseif (!isset($_SESSION['_report_conversations'][$id])) {
         chatError(404, 'CONVERSATION_NOT_FOUND', 'This reporting conversation is unavailable.');
     } elseif (($_SESSION['_report_conversations'][$id]['identity'] ?? null)
         !== [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId]) {
         chatError(404, 'CONVERSATION_NOT_FOUND', 'This reporting conversation is unavailable.');
+    }
+    if ($action === 'restore') {
+        $turns = ConversationHistory::restore($_SESSION['_report_conversations'][$id]);
+        session_write_close();
+        chatReply(200, ['status' => 'restored', 'conversation_id' => $id, 'turns' => $turns]);
     }
     $prior = $_SESSION['_report_conversations'][$id]['context'] ?? null;
     $identity = [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId];
@@ -141,13 +157,15 @@ try {
     }
     $entry['updated_at'] = time();
     if ($action === 'ask') {
-        $entry['turns'][] = ['status' => $handled['response']['status'],
+        $entry = ConversationHistory::append($entry, $question,
+            $handled['response'] + ['conversation_id' => $id],
+            ['status' => $handled['response']['status'],
+            'title' => $handled['response']['metadata']['title'] ?? null,
             'report' => $handled['context']['report'] ?? null,
             'group_by' => $handled['context']['group_by'] ?? null,
             'date_start' => $handled['context']['date_start'] ?? null,
             'date_end_exclusive' => $handled['context']['date_end_exclusive'] ?? null,
-            'at' => gmdate('c')];
-        $entry['turns'] = array_slice($entry['turns'], -12);
+            'at' => gmdate('c')]);
     }
     $_SESSION['_report_conversations'][$id] = $entry;
     uasort($_SESSION['_report_conversations'], static fn(array $a, array $b): int =>

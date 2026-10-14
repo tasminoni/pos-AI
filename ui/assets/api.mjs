@@ -35,6 +35,15 @@ export class ChatApi {
     return this.request('POST', { action: 'page', question: '', conversation_id: conversationId });
   }
 
+  async restore(conversationId) {
+    if (!this.csrfToken) throw new ChatApiError('Refresh the reporting session.', 'NO_SESSION');
+    const payload = await this.request('POST', { action: 'restore', question: '', conversation_id: conversationId });
+    if (payload.status !== 'restored' || payload.conversation_id !== conversationId || !Array.isArray(payload.turns)) {
+      throw new ChatApiError(payload.assistant_text || 'This reporting conversation could not be restored.', payload.error?.code || 'INVALID_HISTORY');
+    }
+    return payload;
+  }
+
   async request(method, payload = null) {
     if (globalThis.location?.protocol === 'file:') {
       throw new ChatApiError('Open this app through Apache at http://localhost/test_ai_project/ui/index.html. PHP reporting cannot run from a local HTML file.', 'SERVER_REQUIRED');
@@ -55,7 +64,7 @@ export class ChatApi {
         signal: controller.signal,
       });
       const body = await response.text();
-      if (response.status === 404) {
+      if (response.status === 404 && !body.includes('CONVERSATION_NOT_FOUND')) {
         throw new ChatApiError('The reporting endpoint was not found. Open this app through XAMPP Apache at http://localhost/test_ai_project/ui/index.html.', 'ENDPOINT_NOT_FOUND', 404);
       }
       if (body.length > 2300000) throw new ChatApiError('The report response is too large.', 'RESPONSE_TOO_LARGE');
@@ -64,6 +73,9 @@ export class ChatApi {
       catch { throw new ChatApiError('The report service returned an invalid response.', 'INVALID_RESPONSE', response.status); }
       if (!data || typeof data !== 'object' || typeof data.status !== 'string') {
         throw new ChatApiError('The report service returned an invalid response.', 'INVALID_RESPONSE', response.status);
+      }
+      if (response.status === 404 && data.error?.code === 'CONVERSATION_NOT_FOUND') {
+        throw new ChatApiError(data.assistant_text || 'This reporting conversation is no longer available.', 'CONVERSATION_NOT_FOUND', 404);
       }
       if (response.status === 401) {
         throw new ChatApiError('Reporting requires a signed-in POS account. This session has no reporting access; the POS login must be connected to reporting.', 'UNAUTHORIZED', 401);

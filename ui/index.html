@@ -7,9 +7,9 @@
   <meta name="theme-color" content="#101b2e">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Business Intelligence | AI Reports</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20261014-responsive">
+  <link rel="stylesheet" href="assets/styles.css?v=20261014-chat-polish">
   <script src="assets/vendor/chart.umd.min.js" defer></script>
-  <script type="module" src="assets/app.mjs?v=20261013-6"></script>
+  <script type="module" src="assets/app.mjs?v=20261014-history"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -31,7 +31,7 @@
           <div class="welcome-symbol" aria-hidden="true">✦</div>
           <p class="eyebrow accent">AI POWERED BUSINESS INTELLIGENCE</p>
           <h2>Answers you can trace<br><span>back to your data.</span></h2>
-          <p class="welcome-copy">Ask about sales, invoices, products, or shop performance. Every number in a report comes from an approved database query.</p>
+          <p class="welcome-copy">Ask about sales, invoices, products, or shop performance. Get clear answers, charts and details from your business data.</p>
           <div class="prompt-grid" aria-label="Example questions">
             <button class="prompt-card" type="button" data-prompt="Show yearly sales for the last five years"><span class="prompt-icon" aria-hidden="true">↗</span><span>Five-year sales trend<small>See performance by year</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
             <button class="prompt-card" type="button" data-prompt="এই মাসের বিক্রি দেখাও"><span class="prompt-icon" aria-hidden="true">◷</span><span>এই মাসের বিক্রি<small>Bangla questions work too</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
@@ -44,7 +44,14 @@
 
       <div class="composer-zone">
         <div class="active-filters" id="active-filters" aria-live="polite"></div>
-        <form class="composer" id="chat-form"><label class="sr-only" for="question">Ask a reporting question</label><textarea id="question" rows="1" maxlength="1200" placeholder="Ask a question about your business data…" aria-describedby="composer-hint"></textarea><button class="send-button" id="send-button" type="submit" aria-label="Send question">➤</button></form>
+        <form class="composer" id="chat-form">
+          <label class="sr-only" for="question">Ask a reporting question</label>
+          <textarea id="question" rows="1" maxlength="1200" placeholder="What would you like to know about your business?" aria-describedby="composer-hint" enterkeyhint="enter"></textarea>
+          <div class="composer-toolbar">
+            <span class="composer-context"><span class="security-dot" aria-hidden="true"></span> Business data assistant</span>
+            <div class="composer-tools"><span id="question-count" class="question-count" aria-hidden="true">0 / 1200</span><button class="send-button" id="send-button" type="submit" aria-label="Send question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
+          </div>
+        </form>
         <div class="composer-hint" id="composer-hint"><span>Enter to send · Shift + Enter for a new line</span><span>বাংলা · Banglish · English</span></div>
       </div>
     </main>
@@ -56,7 +63,7 @@
         <div class="filter-block"><label for="date-start">Date range</label><p>Optional dates override dates in your next question.</p><div class="date-fields"><div><span>From</span><input id="date-start" type="date"></div><div><span>Through</span><input id="date-end" type="date"></div></div><button class="text-button" id="clear-dates" type="button">Clear dates</button></div>
         <div class="filter-help"><strong>How filters work</strong><p>Your selected shop is checked against your account permissions. Report dates use Asia/Dhaka. Filters apply when you send a question.</p></div>
       </div>
-      <div class="panel-footer"><span class="mini-shield" aria-hidden="true">✓</span> Verified query results only</div>
+      <div class="panel-footer"><span class="mini-shield" aria-hidden="true">✓</span> Results from your business data</div>
     </aside>
     <div class="mobile-overlay" id="mobile-overlay" hidden></div>
   </div>

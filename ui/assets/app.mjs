@@ -1,6 +1,6 @@
-import { ChatApi, ChatApiError } from './api.mjs?v=20261013-3';
-import { ReportView } from './report-view.mjs?v=20261013-6';
-import { dateRangeLabel, reportTitle, text } from './report-utils.mjs';
+import { ChatApi, ChatApiError } from './api.mjs?v=20261014-history';
+import { ReportView } from './report-view.mjs?v=20261014-readable';
+import { dateRangeLabel, formatDate, reportTitle, text } from './report-utils.mjs?v=20261014-readable';
 
 const byId = id => document.getElementById(id);
 const dom = {
@@ -11,10 +11,17 @@ const dom = {
   clearDates: byId('clear-dates'), activeFilters: byId('active-filters'),
   sidebar: byId('sidebar'), filtersPanel: byId('filters-panel'), overlay: byId('mobile-overlay'),
   menuToggle: byId('menu-toggle'), filterToggle: byId('filter-toggle'), panelClose: byId('panel-close'),
-  live: byId('live-status'),
+  live: byId('live-status'), count: byId('question-count'),
 };
 const api = new ChatApi();
-const state = { conversationId: null, busy: false, currentReport: null, history: [], authenticated: false };
+const state = { conversationId: null, busy: false, currentReport: null, history: [], authenticated: false, views: [] };
+
+function clearMessages() {
+  for (const view of state.views) view.destroy();
+  state.views = [];
+  state.currentReport = null;
+  dom.messages.replaceChildren();
+}
 
 function node(tag, className = '', value = null) {
   const item = document.createElement(tag);
@@ -24,10 +31,18 @@ function node(tag, className = '', value = null) {
 }
 
 function status(message) { dom.live.textContent = message; }
-function scrollDown() { requestAnimationFrame(() => dom.conversation.scrollTo({ top: dom.conversation.scrollHeight, behavior: 'smooth' })); }
+function scrollDown() { requestAnimationFrame(() => dom.conversation.scrollTo({ top: dom.conversation.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })); }
+function resizeComposer() {
+  dom.question.style.height = 'auto';
+  dom.question.style.height = `${Math.min(dom.question.scrollHeight, 160)}px`;
+  dom.count.textContent = `${dom.question.value.length} / 1200`;
+  dom.send.disabled = state.busy || !state.authenticated || !dom.question.value.trim();
+}
 function setBusy(busy) {
   state.busy = busy;
-  dom.send.disabled = busy || !state.authenticated;
+  dom.send.disabled = busy || !state.authenticated || !dom.question.value.trim();
+  dom.newChat.disabled = busy;
+  for (const item of dom.history.querySelectorAll('button')) item.disabled = busy;
   dom.question.disabled = busy || !state.authenticated;
   dom.form.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
@@ -37,7 +52,7 @@ function message(role, content = '') {
   const avatar = node('div', 'avatar', role === 'user' ? 'U' : '✦');
   avatar.setAttribute('aria-hidden', 'true');
   const stack = node('div', 'message-stack');
-  if (role !== 'user') stack.append(node('span', 'assistant-label', 'Assistant commentary'));
+  if (role !== 'user') stack.append(node('span', 'assistant-label', 'Assistant'));
   const bubble = node('div', 'bubble', content);
   stack.append(bubble);
   if (role === 'user') article.append(stack, avatar);
@@ -60,19 +75,23 @@ function loadingMessage() {
   const started = Date.now();
   const ticker = setInterval(() => {
     const seconds = Math.floor((Date.now() - started) / 1000);
-    label.textContent = seconds < 15 ? `Planning and checking the report · ${seconds}s`
-      : `Still working on the approved report · ${seconds}s`;
+    label.textContent = seconds < 15 ? `Preparing your results · ${seconds}s`
+      : `Still preparing your report · ${seconds}s`;
   }, 1000);
   return { ...entry, stop: () => clearInterval(ticker) };
 }
 
-function showState(entry, response) {
+function showState(entry, response, restored = false) {
   const type = ['ok', 'no_data', 'clarification', 'error'].includes(response.status) ? response.status : 'error';
   entry.article.classList.remove('loading');
   entry.article.classList.add(type);
   entry.bubble.textContent = text(response.assistant_text || 'The report could not be completed.');
+  if (type === 'ok' && Array.isArray(response.insights) && response.insights.length) {
+    entry.bubble.textContent = response.metadata?.presentation?.language === 'bn' ? 'আপনার রিপোর্ট তৈরি। নিচে বিস্তারিত দেখুন।' : 'Your report is ready. See the summary and details below.';
+  }
   if (type === 'ok' || type === 'no_data') {
-    const view = new ReportView(response, { onMore: loadMore, onPrint: printReport });
+    const view = new ReportView(response, { onMore: restored ? null : loadMore, onPrint: printReport });
+    state.views.push(view);
     entry.stack.append(view.root);
     state.currentReport = view;
     status(type === 'ok' ? 'Report ready.' : 'No data for this report.');
@@ -115,24 +134,52 @@ function renderHistory() {
   for (const entry of state.history.slice(0, 8)) {
     if (typeof entry.conversation_id !== 'string') continue;
     const last = Array.isArray(entry.turns) ? entry.turns.at(-1) : null;
-    const title = reportTitle(last?.report, last?.group_by);
+    const title = last?.title || reportTitle(last?.report, last?.group_by);
     const item = node('button', `history-item ${entry.conversation_id === state.conversationId ? 'active' : ''}`);
     item.type = 'button';
+    item.disabled = state.busy;
     item.append(node('span', 'history-title', title),
       node('span', 'history-meta', last?.date_start ? `${last.date_start} → ${last.date_end_exclusive || ''}` : 'Continue conversation'));
-    item.addEventListener('click', () => {
-      state.conversationId = entry.conversation_id;
-      state.currentReport?.destroy();
-      state.currentReport = null;
-      dom.messages.replaceChildren();
-      dom.welcome.hidden = true;
-      const note = message('assistant', 'Conversation restored. Ask a follow-up question to continue this report context.');
-      note.stack.append(node('div', 'state-card', 'Previous report rows are not stored in chat history. New questions run fresh, scoped queries.'));
-      renderHistory();
-      closePanels();
-      dom.question.focus();
-    });
+    item.addEventListener('click', () => restoreConversation(entry.conversation_id));
     dom.history.append(item);
+  }
+}
+
+async function restoreConversation(id) {
+  if (state.busy || !state.authenticated) return;
+  setBusy(true);
+  closePanels();
+  status('Loading saved conversation.');
+  // Keep the current conversation visible until the restore request succeeds.
+  try {
+    const saved = await api.restore(id);
+    clearMessages();
+    state.conversationId = id;
+    dom.welcome.hidden = true;
+    for (const turn of saved.turns) {
+      if (turn.question) message('user', turn.question);
+      if (turn.response) {
+        const entry = message('assistant');
+        showState(entry, turn.response, true);
+        if (turn.response.pagination?.truncated) {
+          entry.stack.append(node('div', 'state-card', 'Showing the saved first page. Ask a follow-up question for more results.'));
+        }
+      } else {
+        const entry = message('assistant', turn.title || 'Previous report');
+        entry.stack.append(node('div', 'state-card', 'The results for this older report were not saved or are no longer retained. Ask a follow-up question to generate a new report in this conversation.'));
+      }
+    }
+    if (!saved.turns.length) message('assistant', 'This conversation has no saved reports. Ask a question to continue.');
+    renderHistory();
+    status('Saved conversation loaded.');
+    scrollDown();
+  } catch (error) {
+    dom.messages.append(node('div', 'state-card error', error.message || 'The conversation could not be loaded. Please retry.'));
+    status('The conversation could not be loaded.');
+    scrollDown();
+  } finally {
+    setBusy(false);
+    dom.question.focus();
   }
 }
 
@@ -143,7 +190,7 @@ function remember(response) {
   const turn = {
     report: response.metadata?.report ?? null, group_by: response.metadata?.group_by ?? null,
     date_start: response.time_range?.start ?? null, date_end_exclusive: response.time_range?.end_exclusive ?? null,
-    status: response.status,
+    status: response.status, title: response.metadata?.title || null,
   };
   const existing = state.history.find(item => item.conversation_id === id);
   if (existing) {
@@ -169,7 +216,7 @@ async function submitQuestion(event) {
   message('user', question);
   const pending = loadingMessage();
   dom.question.value = '';
-  dom.question.style.height = '';
+  resizeComposer();
   setBusy(true);
   try {
     const response = await api.ask(question, state.conversationId, filters);
@@ -234,27 +281,26 @@ function closePanels() {
 
 dom.form.addEventListener('submit', submitQuestion);
 dom.question.addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
     event.preventDefault();
     dom.form.requestSubmit();
   }
 });
-dom.question.addEventListener('input', () => {
-  dom.question.style.height = 'auto';
-  dom.question.style.height = `${Math.min(dom.question.scrollHeight, 130)}px`;
-});
+dom.question.addEventListener('input', resizeComposer);
+window.addEventListener('resize', () => { closePanels(); resizeComposer(); });
 dom.newChat.addEventListener('click', () => {
-  state.currentReport?.destroy();
-  state.currentReport = null;
+  if (state.busy) return;
+  clearMessages();
   state.conversationId = null;
-  dom.messages.replaceChildren();
   dom.welcome.hidden = false;
+  dom.question.value = '';
+  resizeComposer();
   renderHistory();
   closePanels();
   dom.question.focus();
 });
 for (const prompt of document.querySelectorAll('[data-prompt]')) {
-  prompt.addEventListener('click', () => { dom.question.value = prompt.dataset.prompt || ''; dom.question.focus(); });
+  prompt.addEventListener('click', () => { dom.question.value = prompt.dataset.prompt || ''; resizeComposer(); dom.question.focus(); });
 }
 for (const control of [dom.shop, dom.start, dom.end]) control.addEventListener('change', renderFilterChips);
 dom.clearDates.addEventListener('click', () => { dom.start.value = ''; dom.end.value = ''; renderFilterChips(); });

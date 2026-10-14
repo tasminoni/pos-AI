@@ -36,3 +36,138 @@
 @media(max-width:860px){.composer-zone{padding-bottom:max(15px,env(safe-area-inset-bottom))}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 @media print{html,body{height:auto;overflow:visible}body{background:#fff}.app-shell{display:block;height:auto;overflow:visible}.sidebar,.topbar,.filters-panel,.composer-zone,.mobile-overlay,.welcome,.user.message,.message:not(.print-current),.report-actions,.chart-switcher,.table-footer,.export-note{display:none!important}.main-content,.conversation{display:block;height:auto;overflow:visible;padding:0;background:#fff}.messages{max-width:none}.message.print-current{display:block}.message.print-current .avatar,.message.print-current .bubble,.message.print-current .narrative-note{display:none}.report-card{border:0;box-shadow:none;margin:0}.report-section,.report-head{break-inside:avoid}.table-wrap{overflow:visible}.data-table{white-space:normal;font-size:9px}.data-table td{max-width:none;overflow:visible}.chart-wrap{height:230px}}
+
+@media screen {
+  .report-title {font-size:18px;line-height:1.4;}
+  .report-subtitle {font-size:12px;color:#65758a;}
+  .data-table {font-size:13px;}
+  .data-table th {color:#475b72;padding:13px 15px;}
+  .data-table td {padding:12px 15px;}
+  .data-table .empty-value {color:#9aa6b4;}
+  .section-head h3,.report-section>h3 {font-size:14px;}
+  .report-section .narrative-note {line-height:1.7;color:#40546a;font-size:13px;}
+  .summary-grid {background:#f8fafc;border-bottom:1px solid #e5eaf0;}
+  .summary-grid .kpi {background:#fff;}
+  .kpi-source {font-size:11px;line-height:1.5;color:#65758a;}
+  .trend-increasing {color:#167c60;}
+  .trend-decreasing {color:#b54a41;}
+  .trend-unchanged {color:#65758a;}
+}
+@media print {.message.print-current .report-card .narrative-note{display:block!important;}}
+
+/* A spacious conversation with a composer that stays within the viewport. */
+@media screen {
+  :root{--nav:#142338;--soft:#f6f8fb;--muted:#63748a}
+  button:focus-visible{outline:3px solid #df987b;outline-offset:3px}
+  .app-shell{grid-template-columns:240px minmax(0,1fr) 280px}
+  .main-content{background:radial-gradient(ellipse at 50% 0,#fff6f0 0,transparent 55%),#f8fafc}
+  .topbar{height:82px;background:rgba(255,255,255,.94)}
+  .conversation{padding-top:28px;scrollbar-width:thin;scrollbar-color:#cdd6e1 transparent;scroll-padding-bottom:24px}
+  .welcome{max-width:760px;margin:clamp(18px,5vh,64px) auto 24px}
+  .welcome-symbol{width:64px;height:64px;border-radius:22px;margin-bottom:22px;background:linear-gradient(145deg,#fff8f3,#ffe4d6);box-shadow:0 10px 26px #db775715}
+  .welcome h2{font-size:clamp(32px,3.2vw,48px);line-height:1.18;letter-spacing:-.045em}
+  .welcome-copy{font-size:15px;line-height:1.75;color:#63748a}
+  .prompt-grid{gap:12px;margin-top:28px}
+  .prompt-card{min-height:86px;padding:18px;border-radius:16px;box-shadow:0 3px 10px #14233804}
+  .prompt-card>span:nth-child(2){font-size:14px;font-weight:650}
+  .prompt-card small{font-size:12px;color:#748297;line-height:1.5}
+  .prompt-icon{width:40px;height:40px;border-radius:12px}
+  .prompt-card:nth-child(3) .prompt-icon{background:#eaf5f2;color:#258577}
+  .prompt-card:nth-child(4) .prompt-icon{background:#edf0fc;color:#687ac0}
+  .messages{max-width:900px;padding-top:8px}
+  .message{gap:12px;margin-bottom:30px}
+  .avatar{width:36px;height:36px;border-radius:12px;border:1px solid #e2e8f0}
+  .assistant .avatar{border-color:#f1d6c8;background:#fff0e7}
+  .message-stack{max-width:calc(100% - 48px);flex:0 1 820px}
+  .user .message-stack{flex:0 1 auto;max-width:80%}
+  .bubble{font-size:15px;line-height:1.8}
+  .user .bubble{padding:13px 19px;background:#203650;box-shadow:0 3px 10px #1423380a}
+  .assistant-label{font-size:11px;color:#687b90;letter-spacing:.07em;margin-bottom:7px}
+  .assistant .bubble{padding:2px 0 10px}
+  .state-card{font-size:14px;line-height:1.7;border-radius:14px}
+  .progress{font-size:14px}
+  .report-card{border-radius:18px;box-shadow:0 6px 24px #14233806}
+  .composer-zone{padding:12px clamp(18px,3vw,48px) max(18px,env(safe-area-inset-bottom));background:linear-gradient(180deg,#f8fafc00,#f8fafc 20%)}
+  .composer-zone>*{max-width:900px}
+  .active-filters:empty{display:none}
+  .active-filters{margin-bottom:10px}
+  .filter-chip{font-size:12px;padding:6px 11px}
+  .composer{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:18px 16px 12px;border:1px solid #d6dfe9;border-radius:22px;box-shadow:0 8px 30px #1423380a,0 2px 5px #14233804}
+  .composer:focus-within{border-color:#df9b80;box-shadow:0 0 0 3px #e577520d,0 8px 30px #1423380a}
+  .composer textarea{display:block;min-height:28px;max-height:160px;padding:0 3px;font-size:16px;line-height:1.65;scrollbar-width:thin}
+  .composer textarea::placeholder{color:#7d8b9d}
+  .composer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .composer-context{display:flex;align-items:center;gap:8px;font-size:12px;color:#708097}
+  .composer-context .security-dot{width:6px;height:6px;margin:0;background:#38a186;box-shadow:none}
+  .composer-tools{display:flex;align-items:center;gap:12px}
+  .question-count{font-size:11px;font-variant-numeric:tabular-nums;color:#8290a2;white-space:nowrap}
+  .send-button{width:44px;height:44px;border-radius:14px;background:#df7552;box-shadow:0 4px 10px #df755225}
+  .send-button:disabled{background:#e9edf2;color:#9aa7b8;opacity:1;box-shadow:none}
+  .composer-hint{font-size:11px;color:#77869a;padding:10px 6px 0}
+  .icon-button{width:44px;height:44px;border:1px solid #e5eaf0;background:#fff}
+  .filter-block p,.filter-help{color:#6c7b8d;font-size:12px}
+}
+@media screen and (max-width:1439px){
+  .app-shell{grid-template-columns:240px minmax(0,1fr)}
+  .filters-panel{position:fixed;right:0;top:0;bottom:0;width:min(340px,90vw);transform:translateX(100%);transition:transform .24s ease;box-shadow:-15px 0 35px #111d301f}
+  .filters-panel.open{transform:translateX(0)}
+  .filter-toggle,.panel-close{display:grid}
+  .mobile-overlay.visible{display:block;position:fixed;inset:0;background:#0f1c2f55;z-index:25;backdrop-filter:blur(3px)}
+}
+@media screen and (max-width:860px){
+  .app-shell{display:block}
+  .topbar{height:72px;padding:12px 16px}
+  .topbar-start{gap:10px}
+  .topbar h1{font-size:18px}
+  .conversation{padding:20px 16px 10px}
+  .welcome{margin:24px auto 20px;max-width:600px}
+  .welcome h2{font-size:36px}
+  .welcome-copy{font-size:14px}
+  .prompt-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:24px}
+  .prompt-card{min-height:92px;padding:14px;gap:10px}
+  .prompt-card>span:nth-child(2){font-size:13px}
+  .prompt-icon{width:32px;height:32px}
+  .prompt-arrow{display:none}
+  .composer-zone{padding:10px 14px max(12px,env(safe-area-inset-bottom))}
+  .composer{padding:15px 13px 10px;border-radius:19px}
+  .composer-hint{justify-content:center;padding-top:8px}
+  .message-stack{max-width:calc(100% - 44px)}
+  .user .message-stack{max-width:85%}
+  .avatar{width:32px;height:32px}
+  .message{gap:10px}
+}
+@media screen and (max-width:520px){
+  .breadcrumb{font-size:8px;letter-spacing:.1em}
+  .topbar{padding:10px 12px;gap:8px}
+  .topbar h1{font-size:16px}
+  .conversation{padding:18px 12px 8px}
+  .welcome{margin-top:14px}
+  .welcome-symbol{width:50px;height:50px;border-radius:16px;margin-bottom:16px;font-size:26px}
+  .welcome .eyebrow{font-size:9px;letter-spacing:.12em}
+  .welcome h2{font-size:30px;margin-top:12px}
+  .welcome-copy{font-size:13px;max-width:340px}
+  .prompt-grid{gap:8px;margin-top:22px}
+  .prompt-card{display:flex;flex-direction:column;align-items:flex-start;gap:9px;min-height:118px;padding:13px}
+  .prompt-card small{font-size:11px}
+  .composer-zone{padding-left:10px;padding-right:10px}
+  .composer-context{font-size:11px}
+  .question-count{display:none}
+  .composer textarea{font-size:16px}
+  .bubble{font-size:14px}
+  .user .bubble{padding:11px 14px}
+  .report-head,.report-section{padding:14px 12px}
+  .kpi-grid{grid-template-columns:minmax(0,1fr);padding:12px}
+  .table-toolbar select,.outline-button,.page-buttons button,.chart-switcher button{min-height:36px;font-size:12px}
+}
+@media screen and (max-width:360px){
+  .topbar h1{font-size:14px}
+  .topbar-start{gap:6px}
+  .welcome h2{font-size:27px}
+  .composer-context{font-size:10px}
+}
+@media screen and (max-height:600px){
+  .welcome{margin-top:10px}
+  .welcome-symbol{margin-bottom:12px}
+  .composer{gap:8px;padding-top:12px}
+  .composer-hint{display:none}
+}

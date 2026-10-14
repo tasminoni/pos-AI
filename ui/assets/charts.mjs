@@ -1,4 +1,4 @@
-import { chartPoints } from './report-utils.mjs';
+import { chartPoints, columnLabel, formatNumber, formatValue } from './report-utils.mjs?v=20261014-readable';
 
 const palette = ['#df7955', '#247f84', '#778ad1', '#e4ad63', '#9d80b9', '#5c9f75', '#c66d8d', '#738a9c'];
 
@@ -6,8 +6,11 @@ export function buildChartConfig(chart, kind) {
   const points = chartPoints(chart, kind);
   if (!points || !points.length) return null;
   const circular = kind === 'pie' || kind === 'doughnut';
+  const dimension = chart.columns?.find(column => column.name === chart.x) || { name: chart.x };
+  const measure = chart.columns?.find(column => column.name === chart.y) || { name: chart.y };
+  const labels = chart.data.map(row => formatValue(row[chart.x], dimension, { grain: chart.period_grain || 'none', timezone: chart.timezone }));
   const dataset = {
-    label: 'Verified sales amount',
+    label: columnLabel(measure),
     data: points.map(point => point.value),
     backgroundColor: circular ? points.map((_, index) => palette[index % palette.length]) :
       (kind === 'bar' ? '#df7955' : 'rgba(223,121,85,.12)'),
@@ -25,16 +28,16 @@ export function buildChartConfig(chart, kind) {
     animation: false,
     plugins: {
       legend: { display: circular, position: 'bottom', labels: { color: '#617184', boxWidth: 10, padding: 14 } },
-      tooltip: { callbacks: { label: item => `${item.label}: ${points[item.dataIndex]?.exact ?? ''}` } },
+      tooltip: { callbacks: { label: item => `${item.label}: ${formatNumber(points[item.dataIndex]?.exact ?? '')}` } },
     },
   };
   if (!circular) {
     options.scales = {
       x: { grid: { display: false }, ticks: { color: '#8190a0', maxRotation: 35, autoSkip: true } },
-      y: { beginAtZero: false, grid: { color: '#e9edf1' }, ticks: { color: '#8190a0' } },
+      y: { beginAtZero: false, grid: { color: '#e9edf1' }, ticks: { color: '#8190a0', callback: value => formatNumber(value) } },
     };
   }
-  return { type: kind, data: { labels: points.map(point => point.label), datasets: [dataset] }, options };
+  return { type: kind, data: { labels, datasets: [dataset] }, options };
 }
 
 export function drawChart(container, chart, kind, current = null) {

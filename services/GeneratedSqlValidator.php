@@ -198,7 +198,7 @@ final class GeneratedSqlValidator
                     $otherwise=$this->take('ELSE')?' ELSE '.$this->expression():'';
                     $this->expect('END'); $left='CASE '.implode(' ',$clauses).$otherwise.' END';
                 } elseif ($this->take('(')) {
-                    if (!in_array($name, ['SUM','AVG','COUNT','COUNT_BIG','MIN','MAX','YEAR','MONTH','DAY','DATEPART','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST','LEN','LOWER','UPPER','LTRIM','RTRIM','CEILING','FLOOR','SUBSTRING'], true)) { $this->reject(); }
+                    if (!in_array($name, ['SUM','AVG','COUNT','COUNT_BIG','MIN','MAX','YEAR','MONTH','DAY','DATEPART','DATEFROMPARTS','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST','LEN','LOWER','UPPER','LTRIM','RTRIM','CEILING','FLOOR','SUBSTRING'], true)) { $this->reject(); }
                     if ($name === 'CAST') {
                         $arg = $this->expression(); $this->expect('AS'); $type = $this->identifier();
                         if (!in_array(strtolower($type), ['date','datetime','int','bigint','decimal','numeric','varchar'], true)) { $this->reject(); }
