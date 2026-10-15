@@ -53,7 +53,7 @@ final class GeneratedSqlExecutor
             $next=$offset+$compiled['limit'];
             $result['next_offset']=$result['truncated'] && $compiled['can_page'] && $next<=10000?$next:null;
             return $result;
-        } catch (QueryValidationException) { $outcome='PLAN_REJECTED'; }
+        } catch (QueryValidationException $error) { $outcome='PLAN_REJECTED'; $safeReason=$error->reason; }
         catch (QueryRunException $error) { $outcome=$error->publicCode; $safeReason=$error->safeReason; }
         catch (Throwable) { $outcome='QUERY_FAILED'; }
         finally {

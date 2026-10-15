@@ -4,34 +4,36 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#101b2e">
+  <meta name="theme-color" content="#ffffff">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Business Intelligence | AI Reports</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20261014-chat-polish">
+  <link rel="stylesheet" href="assets/styles.css?v=20261015-delete">
+  <link rel="stylesheet" href="assets/chat.css?v=20261015-1">
   <script src="assets/vendor/chart.umd.min.js" defer></script>
-  <script type="module" src="assets/app.mjs?v=20261014-history"></script>
+  <script type="module" src="assets/app.mjs?v=20261015-timeout-feedback"></script>
 </head>
 <body>
   <div class="app-shell">
     <aside class="sidebar" id="sidebar" aria-label="Reporting navigation">
       <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><span><strong>Business Lens</strong><small>AI reporting workspace</small></span></div>
       <button class="new-chat" id="new-chat" type="button"><span aria-hidden="true">＋</span> New conversation</button>
+      <label class="history-search"><span aria-hidden="true">⌕</span><input id="history-search" type="search" placeholder="Search conversations" aria-label="Search recent reports" autocomplete="off"></label>
       <div class="sidebar-section"><div class="eyebrow">RECENT REPORTS</div><nav id="history-list" aria-label="Recent report conversations"><p class="sidebar-muted">Your report history will appear here.</p></nav></div>
       <div class="sidebar-bottom"><div class="security-note"><span class="security-dot" aria-hidden="true"></span><span>Scoped to your authorized business data</span></div><div class="sidebar-foot">Verified data · Read-only queries</div></div>
     </aside>
 
     <main class="main-content" id="main-content">
       <header class="topbar">
-        <div class="topbar-start"><button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Toggle menu" aria-expanded="false">☰</button><div><div class="breadcrumb">WORKSPACE <span aria-hidden="true">/</span> REPORTING</div><h1>Ask your business data</h1></div></div>
+        <div class="topbar-start"><button class="icon-button menu-toggle" id="menu-toggle" type="button" aria-label="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">☰</button><div><div class="breadcrumb">YOUR BUSINESS WORKSPACE</div><h1>Business Lens <span class="model-label">AI</span></h1></div></div>
         <div class="topbar-actions"><span class="status-pill"><span aria-hidden="true"></span> Secure report mode</span><button class="icon-button filter-toggle" id="filter-toggle" type="button" aria-label="Show report filters" aria-expanded="false">⚙</button></div>
       </header>
 
       <section class="conversation" id="conversation" aria-label="Reporting conversation">
         <div class="welcome" id="welcome">
           <div class="welcome-symbol" aria-hidden="true">✦</div>
-          <p class="eyebrow accent">AI POWERED BUSINESS INTELLIGENCE</p>
-          <h2>Answers you can trace<br><span>back to your data.</span></h2>
-          <p class="welcome-copy">Ask about sales, invoices, products, or shop performance. Get clear answers, charts and details from your business data.</p>
+          <p class="eyebrow accent">A LITTLE CLARITY FOR YOUR DAY</p>
+          <h2>What can I help you discover?</h2>
+          <p class="welcome-copy">Turn your business questions into clear answers.<br>Explore sales, spot trends, and see the bigger picture.</p>
           <div class="prompt-grid" aria-label="Example questions">
             <button class="prompt-card" type="button" data-prompt="Show yearly sales for the last five years"><span class="prompt-icon" aria-hidden="true">↗</span><span>Five-year sales trend<small>See performance by year</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
             <button class="prompt-card" type="button" data-prompt="এই মাসের বিক্রি দেখাও"><span class="prompt-icon" aria-hidden="true">◷</span><span>এই মাসের বিক্রি<small>Bangla questions work too</small></span><span class="prompt-arrow" aria-hidden="true">↗</span></button>
@@ -43,15 +45,17 @@
       </section>
 
       <div class="composer-zone">
+        <button class="jump-latest" id="jump-latest" type="button" aria-label="Scroll to latest message" hidden>↓ <span>Latest message</span></button>
         <div class="active-filters" id="active-filters" aria-live="polite"></div>
         <form class="composer" id="chat-form">
           <label class="sr-only" for="question">Ask a reporting question</label>
-          <textarea id="question" rows="1" maxlength="1200" placeholder="What would you like to know about your business?" aria-describedby="composer-hint" enterkeyhint="enter"></textarea>
+          <textarea id="question" rows="1" maxlength="1200" placeholder="Ask anything about your business…" aria-describedby="composer-hint input-limit" enterkeyhint="enter"></textarea>
           <div class="composer-toolbar">
-            <span class="composer-context"><span class="security-dot" aria-hidden="true"></span> Business data assistant</span>
+            <button class="composer-filter" id="composer-filter" type="button">☷ <span>Report filters</span></button>
             <div class="composer-tools"><span id="question-count" class="question-count" aria-hidden="true">0 / 1200</span><button class="send-button" id="send-button" type="submit" aria-label="Send question"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div>
           </div>
         </form>
+        <p class="input-limit" id="input-limit" role="status" hidden>Your question is too long. Shorten it before sending.</p>
         <div class="composer-hint" id="composer-hint"><span>Enter to send · Shift + Enter for a new line</span><span>বাংলা · Banglish · English</span></div>
       </div>
     </main>
@@ -68,5 +72,6 @@
     <div class="mobile-overlay" id="mobile-overlay" hidden></div>
   </div>
   <div class="sr-only" id="live-status" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" hidden></div>
 </body>
 </html>

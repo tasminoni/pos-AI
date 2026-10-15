@@ -108,6 +108,23 @@ assert.throws(() => historyApi.page(historyId), error => error.code === 'NO_SESS
 await assert.rejects(() => historyApi.restore(historyId), error => error.code === 'NO_SESSION');
 historyApi.csrfToken = 'history-csrf';
 assert.deepEqual((await historyApi.restore(historyId)).turns, savedTurns);
+const deleteApi = new ChatApi('/chat', async (url, options) => {
+  assert.equal(options.credentials, 'same-origin');
+  assert.equal(options.headers['X-CSRF-Token'], 'delete-csrf');
+  assert.deepEqual(JSON.parse(options.body), { action: 'delete', question: '', conversation_id: historyId });
+  return { status: 200, text: async () => JSON.stringify({ status: 'deleted', conversation_id: historyId }) };
+});
+await assert.rejects(() => deleteApi.deleteConversation(historyId), error => error.code === 'NO_SESSION');
+deleteApi.csrfToken = 'delete-csrf';
+assert.equal((await deleteApi.deleteConversation(historyId)).status, 'deleted');
+const failedDeleteApi = new ChatApi('/chat', async () => ({ status: 503,
+  text: async () => JSON.stringify({ status: 'error', assistant_text: 'Try again.', error: { code: 'DELETE_FAILED' } }) }));
+failedDeleteApi.csrfToken = 'delete-csrf';
+await assert.rejects(() => failedDeleteApi.deleteConversation(historyId), error => error.code === 'DELETE_FAILED');
+const mismatchedDeleteApi = new ChatApi('/chat', async () => ({ status: 200,
+  text: async () => JSON.stringify({ status: 'deleted', conversation_id: 'b'.repeat(32) }) }));
+mismatchedDeleteApi.csrfToken = 'delete-csrf';
+await assert.rejects(() => mismatchedDeleteApi.deleteConversation(historyId), error => error.code === 'DELETE_FAILED');
 const missingHistoryApi = new ChatApi('/chat', async () => ({ status: 404,
   text: async () => JSON.stringify({ status: 'error', error: { code: 'CONVERSATION_NOT_FOUND' } }) }));
 missingHistoryApi.csrfToken = 'history-csrf';

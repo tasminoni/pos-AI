@@ -35,6 +35,15 @@ export class ChatApi {
     return this.request('POST', { action: 'page', question: '', conversation_id: conversationId });
   }
 
+  async deleteConversation(conversationId) {
+    if (!this.csrfToken) throw new ChatApiError('Refresh the reporting session.', 'NO_SESSION');
+    const payload = await this.request('POST', { action: 'delete', question: '', conversation_id: conversationId });
+    if (payload.status !== 'deleted' || payload.conversation_id !== conversationId) {
+      throw new ChatApiError(payload.assistant_text || 'The report could not be deleted. Please retry.', payload.error?.code || 'DELETE_FAILED');
+    }
+    return payload;
+  }
+
   async restore(conversationId) {
     if (!this.csrfToken) throw new ChatApiError('Refresh the reporting session.', 'NO_SESSION');
     const payload = await this.request('POST', { action: 'restore', question: '', conversation_id: conversationId });

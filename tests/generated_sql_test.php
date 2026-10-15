@@ -133,6 +133,21 @@ $beforeBlocked=$queryCalls;
 $blocked=(new GeneratedReportService($blockedAi,$client,$schema))->handle('Test blocked database fields',null,$scope);
 assertSql($blockedCalls===2 && $queryCalls===$beforeBlocked && $blocked['response']['error']['code']==='PLAN_REJECTED',
     'Repair attempts must not bypass restricted table checks.');
+assertSql(is_string($blocked['response']['error']['reason'] ?? null), 'The final rejection reason was lost before chat logging.');
+assertSql(($failure['error']['reason'] ?? null) !== null, 'Query API validation errors must preserve a safe rejection category.');
+foreach ([
+    ['SELECT SUM(h.xnetamt) AS total FROM dbo.opdoheader AS h WHERE h.xworkingdate >= GETDATE()', 'unsupported_sql_function'],
+    ['SELECT h.missing_column AS total FROM dbo.opdoheader AS h', 'unknown_or_restricted_column'],
+    ['SELECT h.xnetamt AS total FROM dbo.not_a_table AS h', 'unknown_table'],
+    ['SELECT h.xnetamt AS total FROM dbo.opdoheader AS h;', 'unsupported_sql_token'],
+] as [$invalidSql, $expectedReason]) {
+    try {
+        $validator->compile($invalidSql, $scope);
+        throw new RuntimeException('Unsupported SQL unexpectedly passed validation.');
+    } catch (QueryValidationException $error) {
+        assertSql($error->reason === $expectedReason, 'The rejection category did not identify the validation failure.');
+    }
+}
 $timeoutCalls=0;
 $timeoutAi=new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
     static function()use(&$timeoutCalls,$sql):array{
@@ -160,4 +175,20 @@ $semanticClient=new QueryApiClient(['url'=>'http://127.0.0.1/api/query.php','tok
 $semantic=(new GeneratedReportService($semanticAi,$semanticClient,$schema))->handle('Report a typed monthly total',null,$scope);
 assertSql($semantic['response']['status']==='ok' && $semantic['response']['metadata']['sql_repaired']
     && $semanticCalls===2 && $semanticQueries===2,'Safe SQL execution feedback did not receive one validated repair.');
+$banglaTimeoutCalls = 0;
+$banglaQuestion = 'এই মাসের বিক্রি দেখাও';
+$unavailableAi = new GeminiService(['api_key'=>'test','model'=>'gemini-3.1-flash-lite','api_url'=>'https://generativelanguage.googleapis.com/v1beta/models'],
+    static function($url, $headers, $body) use (&$banglaTimeoutCalls, $banglaQuestion): array {
+        $banglaTimeoutCalls++;
+        $request = json_decode($body, true);
+        $prompt = json_decode($request['contents'][0]['parts'][0]['text'], true);
+        assertSql($prompt['question'] === $banglaQuestion, 'Bangla question changed before reaching the provider.');
+        throw new GeminiPlanningException('AI_TIMEOUT', 'Provider timed out');
+    });
+$beforeTimeoutQueries = $queryCalls;
+$timeoutReport = (new GeneratedReportService($unavailableAi, $client, $schema))->handle($banglaQuestion, null, $scope);
+assertSql($banglaTimeoutCalls === 2 && $timeoutReport['response']['error']['code'] === 'AI_TIMEOUT',
+    'Provider timeouts should be retried once and retain their specific error code.');
+assertSql($queryCalls === $beforeTimeoutQueries, 'A generation timeout must not execute a new database query.');
+
 echo "Generated SQL tests passed.\n";

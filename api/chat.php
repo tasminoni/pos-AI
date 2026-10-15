@@ -101,7 +101,7 @@ try {
         || (array_key_exists('date_start', $filters) !== array_key_exists('date_end_inclusive', $filters))) {
         chatError(400, 'INVALID_FILTERS', 'Choose valid reporting filters.');
     }
-    if (!in_array($action, ['ask', 'page', 'restore'], true) || !is_string($question)
+    if (!in_array($action, ['ask', 'page', 'restore', 'delete'], true) || !is_string($question)
         || ($action === 'ask' && ($question === '' || strlen($question) > 1200))
         || ($action !== 'ask' && $question !== '')
         || ($id !== null && (!is_string($id) || !preg_match('/^[a-f0-9]{32}$/D', $id)))
@@ -120,6 +120,11 @@ try {
     } elseif (($_SESSION['_report_conversations'][$id]['identity'] ?? null)
         !== [$scope->userId, $scope->zid, $scope->shopnos, $scope->schemaId]) {
         chatError(404, 'CONVERSATION_NOT_FOUND', 'This reporting conversation is unavailable.');
+    }
+    if ($action === 'delete') {
+        unset($_SESSION['_report_conversations'][$id]);
+        session_write_close();
+        chatReply(200, ['status' => 'deleted', 'conversation_id' => $id]);
     }
     if ($action === 'restore') {
         $turns = ConversationHistory::restore($_SESSION['_report_conversations'][$id]);
@@ -174,7 +179,13 @@ try {
     session_write_close();
     $response = $handled['response'];
     $response['conversation_id'] = $id;
-    chatReply($response['status'] === 'error' ? 503 : 200, $response);
+    $httpStatus = $response['status'] !== 'error' ? 200 : match ($response['error']['code'] ?? '') {
+        'PLAN_REJECTED' => 422,
+        'AI_TIMEOUT', 'QUERY_TIMEOUT' => 504,
+        'AI_RATE_LIMITED' => 429,
+        default => 503,
+    };
+    chatReply($httpStatus, $response);
 } catch (JsonException) {
     chatError(503, 'REPORTING_UNAVAILABLE', 'Reporting is unavailable. Please retry.');
 } catch (Throwable) {

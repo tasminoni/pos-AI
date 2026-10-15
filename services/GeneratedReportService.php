@@ -140,7 +140,11 @@ final class GeneratedReportService
             if ($nextPage) { unset($context['cache_key'],$context['cache_plan']); }
             return ['response'=>$base,'context'=>$context];
         } catch (GeminiPlanningException $error) { $base['assistant_text']=$error->getMessage(); $base['error']=['code'=>$error->publicCode]; }
-        catch (QueryValidationException) { $base['assistant_text']='The AI query used unsupported SQL or restricted fields. Rephrase the question using reporting data.'; $base['error']=['code'=>'PLAN_REJECTED']; }
+        catch (QueryValidationException $error) {
+            $base['assistant_text']='The generated report query failed validation. Please retry or clarify the report you want.';
+            $base['error']=['code'=>'PLAN_REJECTED','reason'=>$error->reason];
+            $base['metadata']+=['model_calls'=>$generationCalls??0,'sql_repaired'=>$sqlRepaired??false];
+        }
         catch (InvalidArgumentException $error) { $base['status']='clarification'; $base['assistant_text']=$error->getMessage(); }
         catch (Throwable $error) { error_log('Generated reporting failed: '.get_class($error)); $base['assistant_text']='The report could not be generated. Please retry.'; $base['error']=['code'=>'REPORTING_UNAVAILABLE']; }
         return ['response'=>$base,'context'=>$prior];

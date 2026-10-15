@@ -1,6 +1,7 @@
-import { ChatApi, ChatApiError } from './api.mjs?v=20261014-history';
+import { ChatApi, ChatApiError } from './api.mjs?v=20261015-delete';
 import { ReportView } from './report-view.mjs?v=20261014-readable';
 import { dateRangeLabel, formatDate, reportTitle, text } from './report-utils.mjs?v=20261014-readable';
+import { questionBytes, nearBottom } from './chat-behavior.mjs';
 
 const byId = id => document.getElementById(id);
 const dom = {
@@ -12,15 +13,62 @@ const dom = {
   sidebar: byId('sidebar'), filtersPanel: byId('filters-panel'), overlay: byId('mobile-overlay'),
   menuToggle: byId('menu-toggle'), filterToggle: byId('filter-toggle'), panelClose: byId('panel-close'),
   live: byId('live-status'), count: byId('question-count'),
+  search: byId('history-search'), jump: byId('jump-latest'), toast: byId('toast'),
+  composerFilter: byId('composer-filter'), limit: byId('input-limit'),
 };
 const api = new ChatApi();
 const state = { conversationId: null, busy: false, currentReport: null, history: [], authenticated: false, views: [] };
+let followLatest = true;
+let toastTimer;
+let panelTrigger = null;
+
+function toast(message) {
+  clearTimeout(toastTimer);
+  dom.toast.textContent = message;
+  dom.toast.hidden = false;
+  toastTimer = setTimeout(() => { dom.toast.hidden = true; }, 3500);
+}
+
+function messageActions(entry, content, user = false) {
+  const actions = node('div', 'message-actions');
+  const copy = node('button', 'message-action', 'Copy');
+  copy.type = 'button';
+  copy.setAttribute('aria-label', user ? 'Copy question' : 'Copy response');
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      toast('Copied to clipboard');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(entry.bubble);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      toast('Text selected. Use your device’s copy command.');
+    }
+  });
+  actions.append(copy);
+  if (user) {
+    const edit = node('button', 'message-action', 'Edit & resend');
+    edit.type = 'button';
+    edit.addEventListener('click', () => {
+      if (state.busy) return toast('Wait for the current request to finish.');
+      dom.question.value = content;
+      resizeComposer();
+      dom.question.focus();
+    });
+    actions.append(edit);
+  }
+  entry.stack.append(actions);
+}
 
 function clearMessages() {
   for (const view of state.views) view.destroy();
   state.views = [];
   state.currentReport = null;
   dom.messages.replaceChildren();
+  followLatest = true;
+  dom.jump.hidden = true;
 }
 
 function node(tag, className = '', value = null) {
@@ -31,19 +79,32 @@ function node(tag, className = '', value = null) {
 }
 
 function status(message) { dom.live.textContent = message; }
-function scrollDown() { requestAnimationFrame(() => dom.conversation.scrollTo({ top: dom.conversation.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })); }
+function scrollDown(force = false) {
+  if (force) followLatest = true;
+  if (!followLatest) { dom.jump.hidden = false; return; }
+  requestAnimationFrame(() => {
+    dom.conversation.scrollTo({ top: dom.conversation.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+  });
+}
 function resizeComposer() {
   dom.question.style.height = 'auto';
   dom.question.style.height = `${Math.min(dom.question.scrollHeight, 160)}px`;
-  dom.count.textContent = `${dom.question.value.length} / 1200`;
-  dom.send.disabled = state.busy || !state.authenticated || !dom.question.value.trim();
+  const bytes = questionBytes(dom.question.value);
+  dom.count.textContent = bytes > 900 ? `${bytes} / 1200` : '';
+  dom.limit.hidden = bytes <= 1200;
+  dom.question.setAttribute('aria-invalid', bytes > 1200 ? 'true' : 'false');
+  dom.send.disabled = state.busy || !state.authenticated || !dom.question.value.trim() || bytes > 1200;
 }
 function setBusy(busy) {
   state.busy = busy;
-  dom.send.disabled = busy || !state.authenticated || !dom.question.value.trim();
+  dom.send.disabled = busy || !state.authenticated || !dom.question.value.trim() || questionBytes(dom.question.value) > 1200;
   dom.newChat.disabled = busy;
   for (const item of dom.history.querySelectorAll('button')) item.disabled = busy;
-  dom.question.disabled = busy || !state.authenticated;
+  dom.question.disabled = !state.authenticated;
+  dom.composerFilter.disabled = busy;
+  for (const control of [dom.shop, dom.start, dom.end, dom.clearDates]) {
+    control.disabled = busy || !state.authenticated || (control === dom.shop && dom.shop.options.length <= 1);
+  }
   dom.form.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
@@ -60,15 +121,18 @@ function message(role, content = '') {
   dom.messages.append(article);
   dom.welcome.hidden = true;
   scrollDown();
-  return { article, stack, bubble };
+  const entry = { article, stack, bubble };
+  if (role === 'user') messageActions(entry, content, true);
+  return entry;
 }
 
 function loadingMessage() {
   const entry = message('assistant');
   entry.article.classList.add('loading');
   const progress = node('div', 'progress');
-  const spinner = node('span', 'spinner');
+  const spinner = node('span', 'thinking-dots');
   spinner.setAttribute('aria-hidden', 'true');
+  spinner.append(node('i'), node('i'), node('i'));
   const label = node('span', '', 'Preparing your report…');
   progress.append(spinner, label);
   entry.bubble.replaceChildren(progress);
@@ -81,7 +145,7 @@ function loadingMessage() {
   return { ...entry, stop: () => clearInterval(ticker) };
 }
 
-function showState(entry, response, restored = false) {
+function showState(entry, response, restored = false, retryQuestion = null) {
   const type = ['ok', 'no_data', 'clarification', 'error'].includes(response.status) ? response.status : 'error';
   entry.article.classList.remove('loading');
   entry.article.classList.add(type);
@@ -96,12 +160,42 @@ function showState(entry, response, restored = false) {
     state.currentReport = view;
     status(type === 'ok' ? 'Report ready.' : 'No data for this report.');
   } else {
-    const detail = type === 'clarification' ? 'Please refine your question and send it again.'
+    const providerErrors = ['AI_TIMEOUT', 'AI_CONNECTION_FAILED', 'AI_TEMPORARILY_UNAVAILABLE', 'AI_RATE_LIMITED', 'AI_ACCESS_REJECTED'];
+    const providerIssue = providerErrors.includes(response.error?.code);
+    const bangla = retryQuestion && /[\u0980-\u09ff]/u.test(retryQuestion);
+    const providerDetails = {
+      AI_TIMEOUT: ['AI সার্ভিস থেকে সময়মতো উত্তর পাওয়া যায়নি। এটি প্রশ্নের ভাষার কারণে নয়। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'The AI service did not respond in time. This is not a question-language error. Please try again shortly.'],
+      AI_CONNECTION_FAILED: ['সার্ভার থেকে AI সার্ভিসে সংযোগ করা যায়নি। কিছুক্ষণ পর আবার চেষ্টা করুন।', 'The server could not connect to the AI service. Please try again shortly.'],
+      AI_RATE_LIMITED: ['AI সার্ভিসের ব্যবহারসীমা পূর্ণ হয়েছে। সীমা পুনরায় উপলব্ধ হলে চেষ্টা করুন।', 'The AI service has reached its usage limit. Retry after the provider limit resets.'],
+      AI_ACCESS_REJECTED: ['AI সার্ভিসের অনুমোদনে সমস্যা হয়েছে। প্রশাসককে API সেটিংস পরীক্ষা করতে হবে।', 'An administrator needs to check the AI service credentials and permissions.'],
+    };
+    const detail = providerIssue
+      ? (providerDetails[response.error?.code]?.[bangla ? 0 : 1] || (bangla ? 'AI সার্ভিস এখন ব্যস্ত। কিছুক্ষণ পর আবার চেষ্টা করুন।'
+        : 'The AI service is temporarily unavailable. Please try again shortly.'))
+      : type === 'clarification' ? 'Please refine your question and send it again.'
       : response.error?.code === 'QUERY_TIMEOUT' ? 'The query timed out. Try a shorter date range.'
         : 'No report data was shown. You can retry or change your filters.';
     entry.stack.append(node('div', `state-card ${type === 'error' ? 'error' : ''}`, detail));
     status(entry.bubble.textContent);
+    const retryable = !['AI_ACCESS_REJECTED', 'AI_RATE_LIMITED'].includes(response.error?.code);
+    if (type === 'error' && retryQuestion && retryable) {
+      const retry = node('button', 'message-action retry-question', bangla ? 'আবার চেষ্টা করুন' : 'Try again');
+      retry.type = 'button';
+      retry.addEventListener('click', () => {
+        if (state.busy) return;
+        if (dom.question.value.trim() && dom.question.value.trim() !== retryQuestion) {
+          toast('Your next question is already drafted. Send it or clear it before retrying.');
+          dom.question.focus();
+          return;
+        }
+        dom.question.value = retryQuestion;
+        resizeComposer();
+        dom.form.requestSubmit();
+      });
+      entry.stack.append(retry);
+    }
   }
+  messageActions(entry, entry.bubble.textContent);
   scrollDown();
 }
 
@@ -131,7 +225,13 @@ function renderHistory() {
     dom.history.append(node('p', 'sidebar-muted', 'Your report history will appear here.'));
     return;
   }
-  for (const entry of state.history.slice(0, 8)) {
+  const search = dom.search.value.trim().toLocaleLowerCase();
+  const entries = state.history.slice(0, 8).filter(entry => {
+    const last = entry.turns?.at(-1);
+    return `${last?.title || reportTitle(last?.report, last?.group_by)} ${last?.date_start || ''}`.toLocaleLowerCase().includes(search);
+  });
+  if (!entries.length) dom.history.append(node('p', 'sidebar-muted', 'No matching conversations.'));
+  for (const entry of entries) {
     if (typeof entry.conversation_id !== 'string') continue;
     const last = Array.isArray(entry.turns) ? entry.turns.at(-1) : null;
     const title = last?.title || reportTitle(last?.report, last?.group_by);
@@ -141,7 +241,41 @@ function renderHistory() {
     item.append(node('span', 'history-title', title),
       node('span', 'history-meta', last?.date_start ? `${last.date_start} → ${last.date_end_exclusive || ''}` : 'Continue conversation'));
     item.addEventListener('click', () => restoreConversation(entry.conversation_id));
-    dom.history.append(item);
+    const row = node('div', 'history-row');
+    const remove = node('button', 'history-delete', '×');
+    remove.type = 'button';
+    remove.disabled = state.busy;
+    remove.setAttribute('aria-label', `Delete report: ${title}`);
+    remove.title = 'Delete report';
+    remove.addEventListener('click', () => deleteConversation(entry.conversation_id));
+    row.append(item, remove);
+    dom.history.append(row);
+  }
+}
+
+async function deleteConversation(id) {
+  if (state.busy || !state.authenticated) return;
+  setBusy(true);
+  try {
+    await api.deleteConversation(id);
+    state.history = state.history.filter(entry => entry.conversation_id !== id);
+    if (state.conversationId === id) {
+      clearMessages();
+      state.conversationId = null;
+      dom.welcome.hidden = false;
+    }
+    renderHistory();
+    status('Report deleted from recent reports.');
+    toast('Conversation deleted');
+  } catch (error) {
+    const notice = node('div', 'history-error', error.message || 'The report could not be deleted. Please retry.');
+    notice.setAttribute('role', 'alert');
+    dom.history.append(notice);
+    status('The report could not be deleted.');
+  } finally {
+    setBusy(false);
+    const next = dom.history.querySelector('button');
+    (next || dom.newChat).focus();
   }
 }
 
@@ -160,7 +294,7 @@ async function restoreConversation(id) {
       if (turn.question) message('user', turn.question);
       if (turn.response) {
         const entry = message('assistant');
-        showState(entry, turn.response, true);
+        showState(entry, turn.response, true, turn.question);
         if (turn.response.pagination?.truncated) {
           entry.stack.append(node('div', 'state-card', 'Showing the saved first page. Ask a follow-up question for more results.'));
         }
@@ -205,6 +339,7 @@ async function submitQuestion(event) {
   if (state.busy || !state.authenticated) return;
   const question = dom.question.value.trim();
   if (!question) return;
+  if (questionBytes(question) > 1200) { resizeComposer(); dom.question.focus(); return; }
   let filters;
   try { filters = selectedFilters(); }
   catch (error) { status(error.message); dom.activeFilters.replaceChildren(node('span', 'filter-chip', error.message)); return; }
@@ -213,6 +348,7 @@ async function submitQuestion(event) {
     state.currentReport.render();
     state.currentReport = null;
   }
+  followLatest = true;
   message('user', question);
   const pending = loadingMessage();
   dom.question.value = '';
@@ -221,15 +357,15 @@ async function submitQuestion(event) {
   try {
     const response = await api.ask(question, state.conversationId, filters);
     pending.stop();
-    showState(pending, response);
+    showState(pending, response, false, question);
     remember(response);
   } catch (error) {
     pending.stop();
     showState(pending, { status: 'error', assistant_text: error instanceof ChatApiError ? error.message
-      : 'The report could not be loaded. Please retry.', error: { code: error.code || 'NETWORK_ERROR' } });
+      : 'The report could not be loaded. Please retry.', error: { code: error.code || 'NETWORK_ERROR' } }, false, question);
   } finally {
     setBusy(false);
-    dom.question.focus();
+    if (window.matchMedia('(pointer: fine)').matches) dom.question.focus();
   }
 }
 
@@ -263,20 +399,30 @@ function printReport(root) {
 
 function openPanel(which) {
   const sidebar = which === 'sidebar';
+  panelTrigger = document.activeElement;
   dom.sidebar.classList.toggle('open', sidebar);
   dom.filtersPanel.classList.toggle('open', !sidebar);
+  dom.filtersPanel.inert = sidebar;
+  dom.sidebar.inert = window.matchMedia('(max-width: 860px)').matches && !sidebar;
   dom.overlay.hidden = false;
   dom.overlay.classList.add('visible');
-  dom.menuToggle.setAttribute('aria-expanded', sidebar ? 'true' : 'false');
+  dom.menuToggle.setAttribute('aria-expanded', sidebar || (!window.matchMedia('(max-width: 860px)').matches && !dom.sidebar.parentElement.classList.contains('sidebar-collapsed')) ? 'true' : 'false');
   dom.filterToggle.setAttribute('aria-expanded', sidebar ? 'false' : 'true');
+  dom.composerFilter.setAttribute('aria-expanded', sidebar ? 'false' : 'true');
+  requestAnimationFrame(() => (sidebar ? dom.search : dom.panelClose).focus());
 }
-function closePanels() {
+function closePanels(restoreFocus = false) {
   dom.sidebar.classList.remove('open');
   dom.filtersPanel.classList.remove('open');
+  dom.filtersPanel.inert = true;
+  dom.sidebar.inert = window.matchMedia('(max-width: 860px)').matches;
   dom.overlay.classList.remove('visible');
   dom.overlay.hidden = true;
-  dom.menuToggle.setAttribute('aria-expanded', 'false');
+  dom.menuToggle.setAttribute('aria-expanded', !window.matchMedia('(max-width: 860px)').matches && !dom.sidebar.parentElement.classList.contains('sidebar-collapsed') ? 'true' : 'false');
   dom.filterToggle.setAttribute('aria-expanded', 'false');
+  dom.composerFilter.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && panelTrigger) panelTrigger.focus();
+  panelTrigger = null;
 }
 
 dom.form.addEventListener('submit', submitQuestion);
@@ -287,7 +433,24 @@ dom.question.addEventListener('keydown', event => {
   }
 });
 dom.question.addEventListener('input', resizeComposer);
-window.addEventListener('resize', () => { closePanels(); resizeComposer(); });
+let lastViewportWidth = window.innerWidth;
+window.addEventListener('resize', () => {
+  if (window.innerWidth !== lastViewportWidth) { closePanels(); lastViewportWidth = window.innerWidth; }
+  resizeComposer();
+});
+dom.search.addEventListener('input', renderHistory);
+dom.jump.addEventListener('click', () => scrollDown(true));
+dom.conversation.addEventListener('scroll', () => {
+  followLatest = nearBottom(dom.conversation);
+  dom.jump.hidden = followLatest || !dom.messages.children.length;
+}, { passive: true });
+if ('ResizeObserver' in window) {
+  new ResizeObserver(() => {
+    if (followLatest) {
+      dom.conversation.scrollTop = dom.conversation.scrollHeight;
+    } else dom.jump.hidden = false;
+  }).observe(dom.messages);
+}
 dom.newChat.addEventListener('click', () => {
   if (state.busy) return;
   clearMessages();
@@ -304,11 +467,29 @@ for (const prompt of document.querySelectorAll('[data-prompt]')) {
 }
 for (const control of [dom.shop, dom.start, dom.end]) control.addEventListener('change', renderFilterChips);
 dom.clearDates.addEventListener('click', () => { dom.start.value = ''; dom.end.value = ''; renderFilterChips(); });
-dom.menuToggle.addEventListener('click', () => dom.sidebar.classList.contains('open') ? closePanels() : openPanel('sidebar'));
+dom.menuToggle.addEventListener('click', () => {
+  if (window.matchMedia('(max-width: 860px)').matches) {
+    dom.sidebar.classList.contains('open') ? closePanels(true) : openPanel('sidebar');
+  } else {
+    const collapsed = dom.sidebar.parentElement.classList.toggle('sidebar-collapsed');
+    dom.menuToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+});
 dom.filterToggle.addEventListener('click', () => dom.filtersPanel.classList.contains('open') ? closePanels() : openPanel('filters'));
-dom.panelClose.addEventListener('click', closePanels);
-dom.overlay.addEventListener('click', closePanels);
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closePanels(); });
+dom.composerFilter.addEventListener('click', () => openPanel('filters'));
+dom.panelClose.addEventListener('click', () => closePanels(true));
+dom.overlay.addEventListener('click', () => closePanels(true));
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closePanels(true);
+  if (event.key === 'Tab' && !dom.overlay.hidden) {
+    const panel = dom.filtersPanel.classList.contains('open') ? dom.filtersPanel : dom.sidebar;
+    const controls = [...panel.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')].filter(item => item.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+  }
+});
+closePanels();
 
 setBusy(true);
 try {

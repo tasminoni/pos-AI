@@ -52,7 +52,7 @@ final class GeneratedSqlValidator
         while ($cursorOffset < strlen($sql)) {
             if (!preg_match('/\G\s*(?:(N?\x27(?:[^\x27]|\x27\x27)*\x27)|(\[(?:[^\]\r\n]|\]\])+\])|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|(<>|!=|<=|>=|[(),.*+\/%=<>-]))/Ai', $sql, $match, 0, $cursorOffset)) {
                 if (trim(substr($sql, $cursorOffset)) === '') { break; }
-                $this->reject();
+                $this->reject('unsupported_sql_token');
             }
             $cursorOffset += strlen($match[0]);
             if (($match[1] ?? '') !== '') {
@@ -114,14 +114,15 @@ final class GeneratedSqlValidator
             } while ($this->take(','));
             $order = ' ORDER BY ' . implode(', ', $parts);
         }
-        if ($this->position !== count($this->tokens)) { $this->reject(); }
+        if ($this->position !== count($this->tokens)) { $this->reject('unexpected_trailing_sql'); }
         if ($offset > 0 && ($requestedTop || $order === '')) { $this->reject(); }
         $parsed = 'SELECT ' . $distinct . 'TOP (' . ($offset + $limit + ($requestedTop?0:1)) . ') ' . implode(', ', $select)
             . ' FROM ' . $from . $where . $group . $having . $order;
         foreach ($this->references as $index=>[$alias,$column]) {
-            $allowed=$this->sources[strtolower($alias)]??[];
+            if (!isset($this->sources[strtolower($alias)])) { $this->reject('unknown_source_alias'); }
+            $allowed=$this->sources[strtolower($alias)];
             $canonical=SqlSchema::columnName($allowed,$column);
-            if ($canonical===null) { $this->reject(); }
+            if ($canonical===null) { $this->reject('unknown_or_restricted_column'); }
             $parsed=str_replace('{C'.$index.'}',$this->quote($this->sourceAliases[strtolower($alias)]).'.'.$this->quote($canonical),$parsed);
         }
         foreach($this->dateSources as $marker=>$source){
@@ -146,17 +147,18 @@ final class GeneratedSqlValidator
         $schema = $this->identifier(); $this->expect('.'); $table = $this->identifier();
         $this->expect('AS'); $alias = $this->identifier();
         $name=SqlSchema::tableName($this->schema,"$schema.$table");
-        if($name===null){$this->reject();}
+        if($name===null){$this->reject('unknown_table');}
         [$schema,$table]=explode('.',$name,2);
         $metadata=$this->schema['tables'][$name];
         $allowed = SqlSchema::queryable($this->schema,$name);
-        if (!$allowed || count($this->sources) >= 8 || isset($this->sources[strtolower($alias)])) { $this->reject(); }
+        if (!$allowed) { $this->reject('restricted_table'); }
+        if (count($this->sources) >= 8 || isset($this->sources[strtolower($alias)])) { $this->reject('invalid_source_alias_or_count'); }
         $this->sources[strtolower($alias)] = $allowed;
         $this->sourceAliases[strtolower($alias)]=$alias;
         $predicates=[];
         foreach($this->schema['access']['row_scope']??[] as $role=>$rule){
             $column=SqlSchema::columnName($allowed,$rule['column']);
-            if($column===null){if($rule['required']??false){$this->reject();}continue;}
+            if($column===null){if($rule['required']??false){$this->reject('required_scope_column_missing');}continue;}
             $values=$rule['values']??[$rule['value']];
             if($role==='tenant'&&is_int($rule['value']??null)){$values=[$scope->zid];}
             if($role==='shop'){$values=$scope->shopnos;if(!$values){$this->reject();}}
@@ -198,7 +200,7 @@ final class GeneratedSqlValidator
                     $otherwise=$this->take('ELSE')?' ELSE '.$this->expression():'';
                     $this->expect('END'); $left='CASE '.implode(' ',$clauses).$otherwise.' END';
                 } elseif ($this->take('(')) {
-                    if (!in_array($name, ['SUM','AVG','COUNT','COUNT_BIG','MIN','MAX','YEAR','MONTH','DAY','DATEPART','DATEFROMPARTS','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST','LEN','LOWER','UPPER','LTRIM','RTRIM','CEILING','FLOOR','SUBSTRING'], true)) { $this->reject(); }
+                    if (!in_array($name, ['SUM','AVG','COUNT','COUNT_BIG','MIN','MAX','YEAR','MONTH','DAY','DATEPART','DATEFROMPARTS','COALESCE','ISNULL','NULLIF','ROUND','ABS','CAST','LEN','LOWER','UPPER','LTRIM','RTRIM','CEILING','FLOOR','SUBSTRING'], true)) { $this->reject('unsupported_sql_function'); }
                     if ($name === 'CAST') {
                         $arg = $this->expression(); $this->expect('AS'); $type = $this->identifier();
                         if (!in_array(strtolower($type), ['date','datetime','int','bigint','decimal','numeric','varchar'], true)) { $this->reject(); }
@@ -220,7 +222,7 @@ final class GeneratedSqlValidator
                     }
                 } elseif ($name === 'NULL') { $left = 'NULL'; }
                 elseif (isset($this->outputAliases[strtolower($token[1])])) { $left = $this->quote($this->outputAliases[strtolower($token[1])]); }
-                else { $this->reject(); }
+                else { $this->reject('unqualified_or_unknown_identifier'); }
             } else { $this->reject(); }
         }
         $precedence = ['OR'=>1,'AND'=>2,'='=>3,'!='=>3,'<>'=>3,'<'=>3,'>'=>3,'<='=>3,'>='=>3,'IS'=>3,'IN'=>3,'LIKE'=>3,'BETWEEN'=>3,'NOT'=>3,'+'=>4,'-'=>4,'*'=>5,'/'=>5,'%'=>5];
@@ -252,5 +254,5 @@ final class GeneratedSqlValidator
     private function take(string $value): bool { if (($this->tokens[$this->position][0] ?? '') === 'string' || $this->peek() !== $value) { return false; } $this->position++; return true; }
     private function expect(string $value): void { if (!$this->take($value)) { $this->reject(); } }
     private function identifier(): string { $token = $this->next(); if ($token[0] !== 'id'||preg_match('/\{[BCD]\d+\}/',$token[1])) { $this->reject(); } return $token[1]; }
-    private function reject(): never { throw new QueryValidationException('generated_sql_not_in_supported_read_only_grammar'); }
+    private function reject(string $reason = 'generated_sql_not_in_supported_read_only_grammar'): never { throw new QueryValidationException($reason); }
 }
